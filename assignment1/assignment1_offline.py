@@ -1,12 +1,14 @@
 import cv2 as cv
 import numpy as np
 
-CHESSBOARD_VERTICES = (9,6)
-TERMINATION_CRITERIA = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+CHESSBOARD_VERTICES = (9, 6)
+TERMINATION_CRITERIA = (cv.TERM_CRITERIA_EPS +
+                        cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
 corners_list = []
 
 # run_number = input("Insert run number: ")
+
 
 def click_event(event, x, y, flags, params):
     ''' function to display the coordinates of the points clicked on the image '''
@@ -15,19 +17,22 @@ def click_event(event, x, y, flags, params):
         print(f"Edge set: ({x}, {y}), Select {4-len(edges)} more corners")
     # if event == cv.EVENT_LBUTTONDOWN and len(edges) >= 4:
     #     print("4 edges selected. Press any key to continue.")
-        
+
+
 def find_chessboard(img):
     gray_img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     ret, corners = cv.findChessboardCorners(gray_img, CHESSBOARD_VERTICES)
     if ret:
-        corners = cv.cornerSubPix(gray_img, corners, (11, 11), (-1, -1), TERMINATION_CRITERIA)
+        corners = cv.cornerSubPix(
+            gray_img, corners, (11, 11), (-1, -1), TERMINATION_CRITERIA)
     return ret, corners
+
 
 def cube_vertices(x, y, z, s):
     """
     It takes the x, y, and z coordinates of the cube's center, and the cube's size, and returns the
     coordinates of the cube's vertices
-    
+
     :param x: x coordinate of the cube
     :param y: y-coordinate of the center of the cube
     :param z: the z-coordinate of the cube
@@ -35,18 +40,21 @@ def cube_vertices(x, y, z, s):
     :return: The vertices of a cube.
     """
     return np.float32([[x, y, z], [x+s, y, z], [x+s, y+s, z], [x, y+s, z],
-     [x, y, z-s], [x+s, y, z-s], [x+s, y+s, z-s], [x, y+s, z-s]])
+                       [x, y, z-s], [x+s, y, z-s], [x+s, y+s, z-s], [x, y+s, z-s]])
+
 
 def draw_cube(img, v):
     """
     It draws a cube on the image
-    
+
     :param img: The image to draw on
     :param v: the vertices of the cube
     """
-    cv.polylines(img, [v[:4]], True, (0,255,0), 5)
-    cv.polylines(img, np.array([v[i::4] for i in range(4)]), False, (0,0,255), 5)
-    cv.polylines(img, [v[4:8]], True, (255,0,0), 5)
+    cv.polylines(img, [v[:4]], True, (0, 255, 0), 5)
+    cv.polylines(img, np.array([v[i::4]
+                 for i in range(4)]), False, (0, 0, 255), 5)
+    cv.polylines(img, [v[4:8]], True, (255, 0, 0), 5)
+
 
 def show_image(img, name="chessboard"):
     cv.namedWindow(name, cv.WINDOW_NORMAL)
@@ -54,44 +62,46 @@ def show_image(img, name="chessboard"):
     cv.waitKey(0)
     cv.destroyAllWindows()
 
+
 def show_images(imgs, name="chessboards"):
     print("balle")
 
-def interpolate_corners(edges):
-    # edges = np.sort(edges)
-    #top left and bottom right
+
+def interpolate_corners(image, edges):
+
+    # top left and bottom right
     tl_edge = edges[0]
     print(tl_edge)
     br_edge = edges[3]
     print(br_edge)
-    
-    rows = CHESSBOARD_VERTICES[1]
-    cols = CHESSBOARD_VERTICES[0]
-    #distances
-    dx = (br_edge[0] - tl_edge[0]) / (cols - 1)
-    dy = (br_edge[1] - tl_edge[1]) / (rows - 1)
+    # distances
+    dx = (br_edge[0] - tl_edge[0]) / (CHESSBOARD_VERTICES[0])
+    dy = (br_edge[1] - tl_edge[1]) / (CHESSBOARD_VERTICES[1])
 
     # Initialize the array to store the X and Y coordinates of the vertices
-    vertices = np.zeros((rows * cols, 2))
+    vertices = np.zeros((CHESSBOARD_VERTICES[1] * CHESSBOARD_VERTICES[0], 2))
 
     # Calculate the X and Y coordinates of the vertices
-    for i in range(rows):
-        for j in range(cols):
-            vertices[i * cols + j, 0] = tl_edge[0] + j * dx
-            vertices[i * cols + j, 1] = tl_edge[1] + i * dy
+    for i in range(CHESSBOARD_VERTICES[1]):
+        for j in range(CHESSBOARD_VERTICES[0]):
+            vertices[i * CHESSBOARD_VERTICES[0] + j, 0] = tl_edge[0] + j * dx
+            vertices[i * CHESSBOARD_VERTICES[0] + j, 1] = tl_edge[1] + i * dy
 
     return np.array(vertices, dtype=np.float32)
-    
-for i in range(1, 15):
-    img = cv.imread(f'test_chessboard_images/sample_{i}.jpg', cv.COLOR_BGR2GRAY)
+
+
+for i in range(1, 30):
+    img = cv.imread(
+        f'test_chessboard_images/{i}.jpg', cv.COLOR_BGR2GRAY)
     h, w = img.shape[:2]
-    
-    punti_test = [(195,69), (155,407), (498,406), (460,54)]
+
+    punti_test = [(195, 69), (155, 407), (498, 406), (460, 54)]
     punti_immagine, punti_oggetto, po = [], [], []
-    po = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1]) for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32)
+    po = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
+                  for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32)
 
     ret, corners = find_chessboard(img)
-    
+
     if not ret:
         edges = []
         print(f"Corners not in image {i} found, Select them manually")
@@ -100,16 +110,17 @@ for i in range(1, 15):
         cv.setMouseCallback('chessboard', click_event)
         cv.waitKey(0)
         cv.destroyAllWindows()
-        corners = np.array(interpolate_corners(edges))[:, np.newaxis]
+        corners = np.array(interpolate_corners(img, edges))[:, np.newaxis]
         # corners = interpolate_corners(edges)
-        
+
     print(f"{i}: n corners = {len(corners)}")
-    
+
     corners_list.append(corners)
 
-for i in range(1, 15):
+for i in range(1, 30):
     corners = corners_list[i-1]
-    img2 = cv.imread(f'test_chessboard_images/sample_{i}.jpg', cv.COLOR_BGR2GRAY)
+    img2 = cv.imread(
+        f'test_chessboard_images/{i}.jpg', cv.COLOR_BGR2GRAY)
     cv.drawChessboardCorners(img2, CHESSBOARD_VERTICES, corners, True)
     show_image(img2)
     # correzione distorsione
