@@ -63,31 +63,43 @@ def show_image(img, name="chessboard"):
     cv.destroyAllWindows()
 
 
-def show_images(imgs, name="chessboards"):
-    print("balle")
-
-
 def interpolate_corners(image, edges):
 
-    # top left and bottom right
-    tl_edge = edges[0]
-    print(tl_edge)
-    br_edge = edges[3]
-    print(br_edge)
-    # distances
-    dx = (br_edge[0] - tl_edge[0]) / (CHESSBOARD_VERTICES[0])
-    dy = (br_edge[1] - tl_edge[1]) / (CHESSBOARD_VERTICES[1])
+    dst_size = (CHESSBOARD_VERTICES[0] * 200, CHESSBOARD_VERTICES[1] * 200)
 
-    # Initialize the array to store the X and Y coordinates of the vertices
-    vertices = np.zeros((CHESSBOARD_VERTICES[1] * CHESSBOARD_VERTICES[0], 2))
+    # Define the corners of the rectified image
+    dst_corners = np.array([[0, 0], [dst_size[0], 0], [0, dst_size[1]], [dst_size[0], dst_size[1]]], dtype=np.float32)
 
-    # Calculate the X and Y coordinates of the vertices
-    for i in range(CHESSBOARD_VERTICES[1]):
-        for j in range(CHESSBOARD_VERTICES[0]):
-            vertices[i * CHESSBOARD_VERTICES[0] + j, 0] = tl_edge[0] + j * dx
-            vertices[i * CHESSBOARD_VERTICES[0] + j, 1] = tl_edge[1] + i * dy
+    rectified_corners = np.array([[0, 0], [CHESSBOARD_VERTICES[0] * 200, 0], [CHESSBOARD_VERTICES[0] * 200, CHESSBOARD_VERTICES[1] * 200], [0, CHESSBOARD_VERTICES[1] * 200]], dtype=np.float32)
+    
+    # Compute the perspective transformation matrix
+    M = cv.getPerspectiveTransform(np.array(edges, dtype=np.float32), dst_corners)
+    
+    M_inv = np.linalg.inv(M)
+    
+    original_corners = cv.perspectiveTransform(rectified_corners.reshape(1, -1, 2), M_inv)
+    original_corners = original_corners.reshape(-1, 2)
 
-    return np.array(vertices, dtype=np.float32)
+    # Draw the rectangle in the original image
+    cv.polylines(img, [np.int32(original_corners)], True, (0, 0, 255), 2)
+    
+
+    # Rectify the image using the transformation matrix
+    # rectified_image = cv.warpPerspective(image, M, dst_size)
+    
+    # # show rectified image
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+    cv.namedWindow('chessboard', cv.WINDOW_NORMAL)
+    cv.imshow("chessboard", img)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+    
+    # palle = (CHESSBOARD_VERTICES[0] - 1, CHESSBOARD_VERTICES[1] - 1)
+    # # Find the chessboard corners in the rectified image
+    # ret, rectified_corners = cv.findChessboardCorners(rectified_image, palle)
+    # print(ret)
+    return np.array(rectified_corners, dtype=np.float32)
 
 
 for i in range(1, 30):
