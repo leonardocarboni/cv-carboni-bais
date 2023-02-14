@@ -63,34 +63,56 @@ def show_image(img, name="chessboard"):
     cv.destroyAllWindows()
 
 
-def show_images(imgs, name="chessboards"):
-    print("balle")
-
-
 def interpolate_corners(image, edges):
 
-    # top left and bottom right
-    tl_edge = edges[0]
-    print(tl_edge)
-    br_edge = edges[3]
-    print(br_edge)
-    # distances
-    dx = (br_edge[0] - tl_edge[0]) / (CHESSBOARD_VERTICES[0])
-    dy = (br_edge[1] - tl_edge[1]) / (CHESSBOARD_VERTICES[1])
+    dst_size = (CHESSBOARD_VERTICES[0] * 200, CHESSBOARD_VERTICES[1] * 200)
 
-    # Initialize the array to store the X and Y coordinates of the vertices
-    vertices = np.zeros((CHESSBOARD_VERTICES[1] * CHESSBOARD_VERTICES[0], 2))
+    # Define the corners of the rectified image
+    dst_corners = np.array([[0, 0], [dst_size[0], 0], [0, dst_size[1]], [dst_size[0], dst_size[1]]], dtype=np.float32)
 
-    # Calculate the X and Y coordinates of the vertices
+    rectified_corners = np.array([[0, 0], [CHESSBOARD_VERTICES[0] * 200, 0], [CHESSBOARD_VERTICES[0] * 200, CHESSBOARD_VERTICES[1] * 200], [0, CHESSBOARD_VERTICES[1] * 200]], dtype=np.float32)
+    # Compute the perspective transformation matrix
+    M = cv.getPerspectiveTransform(np.array(edges, dtype=np.float32), dst_corners)
+    
+    dx = (rectified_corners[2][0] - rectified_corners[0][0]) / (CHESSBOARD_VERTICES[0]-1)
+    dy = (rectified_corners[2][1] - rectified_corners[0][1]) / (CHESSBOARD_VERTICES[1]-1)
+    transformed_vertices = np.zeros((CHESSBOARD_VERTICES[0], CHESSBOARD_VERTICES[1], 2))
     for i in range(CHESSBOARD_VERTICES[1]):
         for j in range(CHESSBOARD_VERTICES[0]):
-            vertices[i * CHESSBOARD_VERTICES[0] + j, 0] = tl_edge[0] + j * dx
-            vertices[i * CHESSBOARD_VERTICES[0] + j, 1] = tl_edge[1] + i * dy
+            transformed_vertices[j, i, 0] = rectified_corners[0][0] + j * dx
+            transformed_vertices[j, i, 1] = rectified_corners[0][1] + i * dy
+    
+    M_inv = np.linalg.inv(M)
+    # original_corners = cv.perspectiveTransform(rectified_corners.reshape(1, -1, 2), M_inv)
+    # original_corners = original_corners.reshape(-1, 2)
+    original_vertices = cv.perspectiveTransform(transformed_vertices.reshape(1, -1, 2), M_inv)
+    original_vertices = original_vertices.reshape(-1, 2)
 
-    return np.array(vertices, dtype=np.float32)
+    
+    # Draw the rectangle in the original image
+    # for vertice in original_vertices:
+    #     cv.circle(img, (int(vertice[0]), int(vertice[1])),  radius=0, color=(0, 0, 255), thickness=5)
+    
+
+    # Rectify the image using the transformation matrix
+    # rectified_image = cv.warpPerspective(image, M, dst_size)
+    
+    # show rectified image
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
+    # cv.namedWindow('chessboard', cv.WINDOW_NORMAL)
+    # cv.imshow("chessboard", rectified_image)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
+    
+    # palle = (CHESSBOARD_VERTICES[0] - 1, CHESSBOARD_VERTICES[1] - 1)
+    # # Find the chessboard corners in the rectified image
+    # ret, rectified_corners = cv.findChessboardCorners(rectified_image, palle)
+    # print(ret)
+    return np.array(original_vertices, dtype=np.float32)
 
 
-for i in range(1, 30):
+for i in range(1, 31):
     img = cv.imread(
         f'test_chessboard_images/{i}.jpg', cv.COLOR_BGR2GRAY)
     h, w = img.shape[:2]
@@ -117,13 +139,13 @@ for i in range(1, 30):
 
     corners_list.append(corners)
 
-for i in range(1, 30):
+for i in range(1, 31):
     corners = corners_list[i-1]
     img2 = cv.imread(
         f'test_chessboard_images/{i}.jpg', cv.COLOR_BGR2GRAY)
     cv.drawChessboardCorners(img2, CHESSBOARD_VERTICES, corners, True)
     show_image(img2)
-    # correzione distorsione
+    # fcorrezione distorsione
     # punti_immagine.append(corners)
     # punti_oggetto.append(po)
 
@@ -136,7 +158,7 @@ for i in range(1, 30):
     # print(*[f'{i}: {r.ravel()} {t.ravel()}' for i,(r,t) in enumerate(zip(rotEstr,traEstr))], sep='\n')
     # alpha = 0.01
     # matIntr2, _ = cv.getOptimalNewCameraMatrix(matIntr,distCoeff,(w,h), alpha)
-    # img_ret = cv.undistort(img, matIntr, distCoeff, None, matIntr2)
+    # img_ret = cv.undistort(img2, matIntr, distCoeff, None, matIntr2)
     # points = np.array([punti_test], np.float32)
     # dPt = cv.undistortPoints(points, matIntr, distCoeff, None, matIntr2)
     # dPt = dPt.round().astype(int)
@@ -144,4 +166,4 @@ for i in range(1, 30):
     # tmp = img_ret.copy()
     # vp, _ = cv.projectPoints(cube_vertices(0,0,0,2), rotEstr[0], traEstr[0], matIntr, distCoeff)
     # res = draw_cube(tmp, vp.round().astype(np.int32))
-    # show_image(tmp, "Temp")
+    # show_image(tmp, "Temp")      
