@@ -37,7 +37,6 @@ def find_chessboard(img):
     return ret, corners
 
 
-
 # function to display an image
 
 
@@ -57,8 +56,11 @@ def interpolate_corners(image, edges):
     # number of squares for each column
     vertical_squares = CHESSBOARD_VERTICES[1] - 1
 
+    square_size = 200
+
     # size of the rectified image
-    dst_size = (horizontal_squares * square_size, vertical_squares * square_size)
+    dst_size = (horizontal_squares * square_size,
+                vertical_squares * square_size)
 
     # Define the corners of the rectified image
     dst_corners = np.array([[0, 0], [dst_size[0], 0], [0, dst_size[1]], [
@@ -134,7 +136,7 @@ for i in range(1, 31):  # for each training image
 # Training Phase
 
 # Saving corners and 3D coordinates for online phase:
-np.savez('corners',corners=corners_list, punti_oggetto=punti_oggetto)
+np.savez('corners', corners=corners_list, punti_oggetto=punti_oggetto)
 # Run 1 (all images)
 err_run1, matIntr_run1, distCoeff_run1, rotEstr_run1, traEstr_run1 = cv.calibrateCamera(
     punti_oggetto, corners_list, (w, h), None, None)
