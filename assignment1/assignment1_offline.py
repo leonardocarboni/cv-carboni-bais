@@ -32,34 +32,6 @@ def find_chessboard(img):
     return ret, corners
 
 
-def cube_vertices(x, y, z, s):
-    """
-    It takes the x, y, and z coordinates of the cube's center, and the cube's size, and returns the
-    coordinates of the cube's vertices
-
-    :param x: x coordinate of the cube
-    :param y: y-coordinate of the center of the cube
-    :param z: the z-coordinate of the cube
-    :param s: size of the cube
-    :return: The vertices of a cube.
-    """
-    return np.float32([[x, y, z], [x+s, y, z], [x+s, y+s, z], [x, y+s, z],
-                       [x, y, z-s], [x+s, y, z-s], [x+s, y+s, z-s], [x, y+s, z-s]])
-
-
-def draw_cube(img, v):
-    """
-    It draws a cube on the image
-
-    :param img: The image to draw on
-    :param v: the vertices of the cube
-    """
-    image = np.copy(img)
-    cv.polylines(image, [v[:4]], True, (0, 255, 0), 5)
-    cv.polylines(image, np.array([v[i::4]
-                 for i in range(4)]), False, (0, 0, 255), 5)
-    cv.polylines(image, [v[4:8]], True, (255, 0, 0), 5)
-    return image
 
 # function to display an image
 def show_image(img, name="chessboard"):
@@ -73,9 +45,10 @@ def interpolate_corners(image, edges):
 
     horizontal_squares = CHESSBOARD_VERTICES[0] - 1 # number of squares for each row
     vertical_squares = CHESSBOARD_VERTICES[1] - 1 # number of squares for each column
+    square_size = 200
 
     # size of the rectified image
-    dst_size = (horizontal_squares * 200, vertical_squares * 200)
+    dst_size = (horizontal_squares * square_size, vertical_squares * square_size)
 
     # Define the corners of the rectified image
     dst_corners = np.array([[0, 0], [dst_size[0], 0], [0, dst_size[1]], [
@@ -93,20 +66,21 @@ def interpolate_corners(image, edges):
 
     for i in range(CHESSBOARD_VERTICES[1]): # for each row of the chessboard
         for j in range(CHESSBOARD_VERTICES[0]): # for each column of the chessboard
-            transformed_vertices[i, j, 0] = rectified_corners[0][0] + j * 200 # store the estimated x coordinate of the (i,j) edge using linear interpolation
-            transformed_vertices[i, j, 1] = rectified_corners[0][1] + i * 200 # store the estimated y coordinate of the (i,j) edge using linear interpolation
+            transformed_vertices[i, j, 0] = rectified_corners[0][0] + j * square_size # store the estimated x coordinate of the (i,j) edge using linear interpolation
+            transformed_vertices[i, j, 1] = rectified_corners[0][1] + i * square_size # store the estimated y coordinate of the (i,j) edge using linear interpolation
 
     # extract the inverse transformation matrix
     M_inv = np.linalg.inv(M) 
 
     # invert the rectified corners to map in the original image
-    original_vertices = cv.perspectiveTransform(
-        transformed_vertices.reshape(1, -1, 2), M_inv)
+    original_vertices = np.float32(cv.perspectiveTransform(
+        transformed_vertices.reshape(1, -1, 2), M_inv))
     original_vertices = original_vertices.reshape(-1, 2)
 
     # TODO: Make this work
-    # original_vertices = cv.cornerSubPix(
-    #         image, original_vertices, (11, 11), (-1, -1), TERMINATION_CRITERIA)
+    image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    original_vertices = cv.cornerSubPix(
+            image, original_vertices, (11, 11), (-1, -1), TERMINATION_CRITERIA)
     
     return np.array(original_vertices, dtype=np.float32)
 
@@ -145,6 +119,8 @@ for i in range(1, 31): # for each training image
 
 # Training Phase
 
+# Saving corners and 3D coordinates for online phase:
+np.savez('corners',corners=corners_list, punti_oggetto=punti_oggetto)
 # Run 1 (all images)
 err_run1, matIntr_run1, distCoeff_run1, rotEstr_run1, traEstr_run1 = cv.calibrateCamera(
     punti_oggetto, corners_list, (w, h), None, None)
