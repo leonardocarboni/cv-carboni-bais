@@ -16,24 +16,31 @@ punti_oggetto = []
 po = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
                for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32)
 
-# callback function to manually annotate the four outmost corner points 
+# callback function to manually annotate the four outmost corner points
+
+
 def click_event(event, x, y, flags, params):
     if event == cv.EVENT_LBUTTONDOWN and len(edges) < 4:
         edges.append((x, y))
         print(f"Edge set: ({x}, {y}), Select {4-len(edges)} more corners")
 
 # function to automatically detect all corners of the chessboard, with augmented precision of subpixel detection
+
+
 def find_chessboard(img):
-    gray_img = cv.cvtColor(img, cv.COLOR_BGR2GRAY) # convert to gray scale
-    ret, corners = cv.findChessboardCorners(gray_img, CHESSBOARD_VERTICES) # find all corners automatically
-    if ret: # corners found
+    gray_img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)  # convert to gray scale
+    ret, corners = cv.findChessboardCorners(
+        gray_img, CHESSBOARD_VERTICES)  # find all corners automatically
+    if ret:  # corners found
         corners = cv.cornerSubPix(
-            gray_img, corners, (11, 11), (-1, -1), TERMINATION_CRITERIA) # augment precision of corners
+            gray_img, corners, (11, 11), (-1, -1), TERMINATION_CRITERIA)  # augment precision of corners
     return ret, corners
 
 
 
 # function to display an image
+
+
 def show_image(img, name="chessboard"):
     cv.namedWindow(name, cv.WINDOW_NORMAL)
     cv.imshow("chessboard", img)
@@ -41,11 +48,14 @@ def show_image(img, name="chessboard"):
     cv.destroyAllWindows()
 
 # function to estimate internal corner positions through linear interpolation
+
+
 def interpolate_corners(image, edges):
 
-    horizontal_squares = CHESSBOARD_VERTICES[0] - 1 # number of squares for each row
-    vertical_squares = CHESSBOARD_VERTICES[1] - 1 # number of squares for each column
-    square_size = 200
+    # number of squares for each row
+    horizontal_squares = CHESSBOARD_VERTICES[0] - 1
+    # number of squares for each column
+    vertical_squares = CHESSBOARD_VERTICES[1] - 1
 
     # size of the rectified image
     dst_size = (horizontal_squares * square_size, vertical_squares * square_size)
@@ -53,9 +63,10 @@ def interpolate_corners(image, edges):
     # Define the corners of the rectified image
     dst_corners = np.array([[0, 0], [dst_size[0], 0], [0, dst_size[1]], [
                            dst_size[0], dst_size[1]]], dtype=np.float32)
-    #TODO what is the point of having two?
-    rectified_corners = np.array([[0, 0], [dst_size[0], 0], [dst_size[0], dst_size[1]], [0, dst_size[1]]], dtype=np.float32)
-    
+    # TODO what is the point of having two?
+    rectified_corners = np.array([[0, 0], [dst_size[0], 0], [
+                                 dst_size[0], dst_size[1]], [0, dst_size[1]]], dtype=np.float32)
+
     # Compute the perspective transformation matrix
     M = cv.getPerspectiveTransform(
         np.array(edges, dtype=np.float32), dst_corners)
@@ -64,34 +75,35 @@ def interpolate_corners(image, edges):
     transformed_vertices = np.zeros(
         (CHESSBOARD_VERTICES[1], CHESSBOARD_VERTICES[0], 2))
 
-    for i in range(CHESSBOARD_VERTICES[1]): # for each row of the chessboard
-        for j in range(CHESSBOARD_VERTICES[0]): # for each column of the chessboard
-            transformed_vertices[i, j, 0] = rectified_corners[0][0] + j * square_size # store the estimated x coordinate of the (i,j) edge using linear interpolation
-            transformed_vertices[i, j, 1] = rectified_corners[0][1] + i * square_size # store the estimated y coordinate of the (i,j) edge using linear interpolation
+    for i in range(CHESSBOARD_VERTICES[1]):  # for each row of the chessboard
+        # for each column of the chessboard
+        for j in range(CHESSBOARD_VERTICES[0]):
+            # store the estimated x coordinate of the (i,j) edge using linear interpolation
+            transformed_vertices[i, j, 0] = rectified_corners[0][0] + j * 200
+            # store the estimated y coordinate of the (i,j) edge using linear interpolation
+            transformed_vertices[i, j, 1] = rectified_corners[0][1] + i * 200
 
     # extract the inverse transformation matrix
-    M_inv = np.linalg.inv(M) 
+    M_inv = np.linalg.inv(M)
 
     # invert the rectified corners to map in the original image
     original_vertices = np.float32(cv.perspectiveTransform(
         transformed_vertices.reshape(1, -1, 2), M_inv))
     original_vertices = original_vertices.reshape(-1, 2)
 
-    # TODO: Make this work
-    image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
     original_vertices = cv.cornerSubPix(
-            image, original_vertices, (11, 11), (-1, -1), TERMINATION_CRITERIA)
-    
+        image, original_vertices, (11, 11), (-1, -1), TERMINATION_CRITERIA)
+
     return np.array(original_vertices, dtype=np.float32)
 
 
 # corner detection phase
-for i in range(1, 31): # for each training image
+for i in range(1, 31):  # for each training image
     img = cv.imread(
-        f'test_chessboard_images/{i}.jpg', cv.COLOR_BGR2GRAY) # read image
-    h, w = img.shape[:2] # extract height and with
+        f'test_chessboard_images/{i}.jpg', cv.COLOR_BGR2GRAY)  # read image
+    h, w = img.shape[:2]  # extract height and with
 
-    ret, corners = find_chessboard(img) # get corners
+    ret, corners = find_chessboard(img)  # get corners
 
     # per ora teniamo
     # if i == 23:
@@ -101,20 +113,22 @@ for i in range(1, 31): # for each training image
     #     show_image(cornerizzata)
     #     print(corners)
 
-    if not ret: # if the corners were not automatically detected
-        edges = [] # list of outmost corners to be annotated
+    if not ret:  # if the corners were not automatically detected
+        edges = []  # list of outmost corners to be annotated
         print(f"Corners not in image {i} found, Select them manually")
         cv.namedWindow("chessboard", cv.WINDOW_NORMAL)
         cv.imshow("chessboard", img)
-        cv.setMouseCallback('chessboard', click_event) # initiate manual annotation
+        # initiate manual annotation
+        cv.setMouseCallback('chessboard', click_event)
         cv.waitKey(0)
         cv.destroyAllWindows()
-        corners = np.array(interpolate_corners(img, edges))[:, np.newaxis] # interpolate the internal corners given the 4 manually annotated ones
+        # interpolate the internal corners given the 4 manually annotated ones
+        corners = np.array(interpolate_corners(img, edges))[:, np.newaxis]
         # corners = interpolate_corners(edges)
 
     print(f"{i}: n corners = {len(corners)}")
-    punti_oggetto.append(po) # store 3d coordinates for calibration
-    corners_list.append(corners) # store detected corners for calibration
+    punti_oggetto.append(po)  # store 3d coordinates for calibration
+    corners_list.append(corners)  # store detected corners for calibration
 
 
 # Training Phase
@@ -124,14 +138,15 @@ np.savez('corners',corners=corners_list, punti_oggetto=punti_oggetto)
 # Run 1 (all images)
 err_run1, matIntr_run1, distCoeff_run1, rotEstr_run1, traEstr_run1 = cv.calibrateCamera(
     punti_oggetto, corners_list, (w, h), None, None)
-np.savez('camera_matrix_Run1',mtx=matIntr_run1,dist=distCoeff_run1) # store parameters for online phase
+# store parameters for online phase
+np.savez('camera_matrix_Run1', mtx=matIntr_run1, dist=distCoeff_run1)
 # Run 2 (only 10)
 err_run2, matIntr_run2, distCoeff_run2, rotEstr_run2, traEstr_run2 = cv.calibrateCamera(
     punti_oggetto[:10], corners_list[:10], (w, h), None, None)
-np.savez('camera_matrix_Run2',mtx=matIntr_run2,dist=distCoeff_run2) # store parameters for online phase
+# store parameters for online phase
+np.savez('camera_matrix_Run2', mtx=matIntr_run2, dist=distCoeff_run2)
 # Run 3 (only 5)
 err_run3, matIntr_run3, distCoeff_run3, rotEstr_run3, traEstr_run3 = cv.calibrateCamera(
     punti_oggetto[:5], corners_list[:5], (w, h), None, None)
-np.savez('camera_matrix_Run3',mtx=matIntr_run3,dist=distCoeff_run3) # store parameters for online phase
-
-
+# store parameters for online phase
+np.savez('camera_matrix_Run3', mtx=matIntr_run3, dist=distCoeff_run3)
