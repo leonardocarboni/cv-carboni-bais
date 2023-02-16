@@ -141,6 +141,7 @@ np.savez('corners', corners=corners_list, punti_oggetto=punti_oggetto)
 # Run 1 (all images)
 err_run1, matIntr_run1, distCoeff_run1, rotEstr_run1, traEstr_run1 = cv.calibrateCamera(
     punti_oggetto, corners_list, (w, h), None, None)
+print(err_run1)
 # store parameters for online phase
 np.savez('camera_matrix_Run1', mtx=matIntr_run1, dist=distCoeff_run1)
 # Run 2 (only 10)
