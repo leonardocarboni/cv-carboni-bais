@@ -142,11 +142,12 @@ if action_i == "3" or action_i == "4" or action_i == "5" or action_i == "6":
 
 runs = [[]]
 if action_i == "7":
-    errors= np.zeros((3, 312, 4, 2))
+    errors= np.zeros((3, 325, 4, 2))
     nans = 0
     n_frame = 0
     cap = cv.VideoCapture("./outpy.avi")
     while cap.isOpened():
+        
         ret, frame = cap.read()
         if ret:
             retC, corners = find_chessboard(frame)
@@ -160,6 +161,10 @@ if action_i == "7":
                             0, 0, 0, 2), rvec, tvec, mtx, dist)
                         first, second, third, fourth = (corners[0, 0], corners[2, 0], corners[18, 0], corners[20, 0])
                         first_vp, second_vp, third_vp, fourth_vp = (vp[0, 0], vp[1, 0], vp[3, 0], vp[2, 0])
+                        
+                        cv.imshow("frame", draw_cube(frame, vp.round().astype(np.int32)))
+                        cv.waitKey(0)
+                        
                         #print(f"frame {n_frame}, run {filei}:" + f"{np.abs(first_vp - first)} {np.abs(second_vp-second)} {np.abs(third_vp - third)} {np.abs(fourth_vp-fourth)}")
                         if np.isnan(first_vp[0]):
                             nans += 1
@@ -176,14 +181,14 @@ if action_i == "7":
         else:
             break
     cap.release()
-    errors3_x = [x for x in errors[2, :, :, 0].ravel() if x is not np.nan]
-    errors3_y = [x for x in errors[2, :, :, 1].ravel() if x is not np.nan]
+    # errors3_x = [x for x in errors[2, :, :, 0].ravel() if x is not np.nan]
+    # errors3_y = [x for x in errors[2, :, :, 1].ravel() if x is not np.nan]
     print(f"Avg error of Run 1, coordinate X: {np.mean(errors[0, :, :, 0])} with Std {sem(errors[0, :, :, 0].ravel())}")
     print(f"Avg error of Run 1, coordinate Y: {np.mean(errors[0, :, :, 1])} with Std {sem(errors[0, :, :, 1].ravel())}")
     print(f"Avg error of Run 2, coordinate X: {np.mean(errors[1, :, :, 0])} with Std {sem(errors[1, :, :, 0].ravel())}")
     print(f"Avg error of Run 2, coordinate Y: {np.mean(errors[1, :, :, 1])} with Std {sem(errors[1, :, :, 1].ravel())}")
-    print(f"Avg error of Run 3, coordinate X: {np.mean(errors3_x)} with Std {sem(errors3_x)}")
-    print(f"Avg error of Run 3, coordinate Y: {np.mean(errors3_y)} with Std {sem(errors3_y)}")
+    print(f"Avg error of Run 3, coordinate X: {np.mean(errors[2, :, :, 0])} with Std {sem(errors[2, :, :, 0].ravel())}")
+    print(f"Avg error of Run 3, coordinate Y: {np.mean(errors[2, :, :, 1])} with Std {sem(errors[2, :, :, 1].ravel())}")
     print(f"Number of times corners were not found automatically: {nans}")
 
 
