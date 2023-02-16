@@ -93,6 +93,7 @@ def interpolate_corners(image, edges):
         transformed_vertices.reshape(1, -1, 2), M_inv))
     original_vertices = original_vertices.reshape(-1, 2)
 
+    image = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     original_vertices = cv.cornerSubPix(
         image, original_vertices, (11, 11), (-1, -1), TERMINATION_CRITERIA)
 
