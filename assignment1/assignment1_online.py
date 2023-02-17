@@ -5,11 +5,19 @@ from scipy.stats import sem
 CHESSBOARD_VERTICES = (9, 6)
 TERMINATION_CRITERIA = (cv.TERM_CRITERIA_EPS +
                         cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-po = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
-               for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32)
+objp = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
+                 for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32)
 
 
 def find_chessboard(img):
+    """
+    It converts the image to gray scale, finds the corners of the chessboard, and then augments the
+    precision of the corners
+
+    :param img: the image to be processed
+    :return: ret is a boolean value that is true if the corners were found and false if they were not.
+    corners is a list of the coordinates of the corners.
+    """
     gray_img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)  # convert to gray scale
     ret, corners = cv.findChessboardCorners(
         gray_img, CHESSBOARD_VERTICES)  # find all corners automatically
@@ -40,6 +48,7 @@ def draw_cube(img, v):
 
     :param img: The image to draw on
     :param v: the vertices of the cube
+    :return: The image with the cube
     """
     image = np.copy(img)
     cv.polylines(image, [v[:4]], True, (0, 255, 0), 2)
@@ -50,6 +59,14 @@ def draw_cube(img, v):
 
 
 def draw_axis(img, corners, vp):
+    """
+    It draws the three axes of the plane on the image
+
+    :param img: The image to draw the axis on
+    :param corners: The corners of the chessboard
+    :param vp: vanishing points
+    :return: The image with the axis
+    """
     corner = tuple(corners[0].ravel())
     img = cv.line(img, corner, tuple(vp[0].ravel()), (255, 255, 0), 5)
     img = cv.line(img, corner, tuple(vp[1].ravel()), (0, 255, 255), 5)
@@ -64,29 +81,111 @@ def show_image(img, name="chessboard"):
     cv.destroyAllWindows()
 
 
-print("Select training (1-2-3) or other options: ")
-print("1. All images")
-print("2. 10 images where corners are found automatically")
-print("3. 5 images where corners are found automatically")
-print("4. 3 Runs comparison with pre-recorded video.")
-print("5. See camera parameters")
-print("6. Shoot new video for runs comparison")
-
-training_i = input("Select the run to test or the desired action: ")
-
+# preliminary phase
 mtx, dist = [], []
+corners_list, object_points = [], []
 
 with np.load(f'corners.npz') as file:
-    corners_list, punti_oggetto = [file[i]
+    corners_list, object_points = [file[i]
                                    for i in ['corners', 'punti_oggetto']]
 
+if len(corners_list) == 0:
+    print("No npz found, Run offline script first.")
+    exit(1)
 
-if training_i == '4':
-    errors = np.zeros((3, 325, 4, 2))
+print("Select what to do: ")
+print("1. Webcam with cube")
+print("2. Webcam with cube and corners")
+print("3. Images with cube")
+print("4. Images with cube and corners")
+print("5. 3 Runs comparison with pre-recorded video.")
+print("6. See camera parameters")
+print("7. Shoot new video for runs comparison")
+choiche_action = input("Select action: ")
+
+
+# actions that require training
+if choiche_action in ["1", "2", "3", "4"]:
+    print("Select training set: ")
+    print("1. All images")
+    print("2. 10 images where corners are found automatically")
+    print("3. 5 images where corners are found automatically")
+    choice_training = input("Select action: ")
+
+    with np.load(f'camera_matrix_Run{choice_training}.npz') as file:
+        mtx, dist = [file[i] for i in ['mtx', 'dist']]
+
+    # webcam
+    if choiche_action in ["1", "2"]:
+        vid = cv.VideoCapture(0)
+
+        while(True):
+            ret, frame = vid.read()
+            retC, corners = find_chessboard(frame)
+            if retC:
+                _, rvec, tvec, _ = cv.solvePnPRansac(
+                    objp, corners, mtx, dist)
+                vp, _ = cv.projectPoints(cube_vertices(
+                    0, 0, 0, 2), rvec, tvec, mtx, dist)
+
+                # draw corners too
+                if choiche_action == "2":
+                    cv.drawChessboardCorners(
+                        frame, CHESSBOARD_VERTICES, corners, True)
+
+                axis = np.float32(
+                    [[3, 0, 0], [0, 3, 0], [0, 0, -3]]).reshape(-1, 3)
+                vp_axis, _ = cv.projectPoints(axis, rvec, tvec, mtx, dist)
+
+                image = draw_cube(frame, vp.round().astype(np.int32))
+                image = draw_axis(image, corners.round().astype(
+                    np.int32), vp_axis.round().astype(np.int32))
+
+                cv.imshow('frame', image)
+            else:
+                cv.imshow('frame', frame)
+
+            if cv.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        vid.release()
+        cv.destroyAllWindows()
+
+    elif choiche_action in ["3", "4"]:
+        # read images 1 to 30
+        for i in range(1, 31):
+            img = cv.imread(
+                f'test_chessboard_images/{i}.jpg', cv.COLOR_BGR2GRAY)
+            h, w = img.shape[:2]
+
+            # draw corners too
+            if choiche_action == "4":
+                cv.drawChessboardCorners(
+                    img, CHESSBOARD_VERTICES, corners_list[i-1], True)
+
+            _, rvec, tvec, _ = cv.solvePnPRansac(
+                objp, corners_list[i-1], mtx, dist)
+            vp, _ = cv.projectPoints(cube_vertices(
+                0, 0, 0, 2), rvec, tvec, mtx, dist)
+
+            axis = np.float32(
+                [[3, 0, 0], [0, 3, 0], [0, 0, -3]]).reshape(-1, 3)
+            vp_axis, _ = cv.projectPoints(axis, rvec, tvec, mtx, dist)
+
+            img = draw_cube(img, vp.round().astype(np.int32))
+            img = draw_axis(
+                img, corners_list[i-1].round().astype(np.int32), vp_axis.round().astype(np.int32))
+
+            show_image(img)
+
+# 3 runs comparison with pre-recorded video
+elif choiche_action == "5":
+    nframes = 325
+    errors = np.zeros((3, nframes, 4, 2))
     n_frame = 0
-    cap = cv.VideoCapture("./outpy.avi")
+    cap = cv.VideoCapture("./video.avi")
+    
     while cap.isOpened():
-
         ret, frame = cap.read()
         if ret:
             retC, corners = find_chessboard(frame)
@@ -95,7 +194,7 @@ if training_i == '4':
                     with np.load(f'camera_matrix_Run{filei}.npz') as file:
                         mtx, dist = [file[i] for i in ['mtx', 'dist']]
                         _, rvec, tvec, _ = cv.solvePnPRansac(
-                            po, corners, mtx, dist)
+                            objp, corners, mtx, dist)
 
                         vp_cube, _ = cv.projectPoints(cube_vertices(
                             0, 0, 0, 2), rvec, tvec, mtx, dist)
@@ -142,7 +241,8 @@ if training_i == '4':
     print(
         f"Avg error of Run 3, coordinate Y: {np.mean(errors[2, :, :, 1])} with Std {sem(errors[2, :, :, 1].ravel())}")
 
-elif training_i == '5':
+# see camera parameters
+elif choiche_action == "6":
     with np.load(f'camera_matrix_Run1.npz') as file:
         mtxRun1, distRun1 = [file[i] for i in ['mtx', 'dist']]
     with np.load(f'camera_matrix_Run2.npz') as file:
@@ -153,11 +253,12 @@ elif training_i == '5':
     print(f"Camera Parameters for Run 2:\n {mtxRun2}")
     print(f"Camera Parameters for Run 3:\n {mtxRun3}")
 
-elif training_i == '6':
+# shoot new video
+elif choiche_action == "7":
     vid = cv.VideoCapture(0)
     ret, frame = vid.read()
     h, w = frame.shape[:2]
-    out = cv.VideoWriter('outpy.avi', cv.VideoWriter_fourcc(
+    out = cv.VideoWriter('video.avi', cv.VideoWriter_fourcc(
         'M', 'J', 'P', 'G'), 10, (w, h))
     for i in range(500):
         ret, frame = vid.read()
@@ -166,65 +267,3 @@ elif training_i == '6':
     vid.release()
     out.release()
     cv.destroyAllWindows()
-
-elif training_i == "1" or training_i == "2" or training_i == "3":
-    with np.load(f'camera_matrix_Run{training_i}.npz') as file:
-        mtx, dist = [file[i] for i in ['mtx', 'dist']]
-
-    print("Select action: ")
-    print("1. Webcam with cube")
-    print("2. Webcam with cube and corners")
-    print("3. Images with cube")
-    print("4. Images with cube and corners")
-    action_i = input("Select what to do: ")
-
-    if action_i == "1" or action_i == "2":
-        vid = cv.VideoCapture(0)
-
-        while(True):
-            ret, frame = vid.read()
-            retC, corners = find_chessboard(frame)
-            if retC:
-                _, rvec, tvec, _ = cv.solvePnPRansac(
-                    po, corners, mtx, dist)
-                vp, _ = cv.projectPoints(cube_vertices(
-                    0, 0, 0, 2), rvec, tvec, mtx, dist)
-
-                if action_i == "2":
-                    cv.drawChessboardCorners(
-                        frame, CHESSBOARD_VERTICES, corners, True)
-                image = draw_cube(frame, vp.round().astype(np.int32))
-                image = draw_axis(image, corners.round().astype(
-                    np.int32), vp.round().astype(np.int32))
-                cv.imshow('frame', image)
-            else:
-                cv.imshow('frame', frame)
-            if cv.waitKey(1) & 0xFF == ord('q'):
-                break
-
-        vid.release()
-        cv.destroyAllWindows()
-
-    if action_i == "3" or action_i == "4":
-        for i in range(1, 31):
-            img = cv.imread(
-                f'test_chessboard_images/{i}.jpg', cv.COLOR_BGR2GRAY)
-            h, w = img.shape[:2]
-            imgcopy = img.copy()
-            if action_i == "4":
-                cv.drawChessboardCorners(
-                    imgcopy, CHESSBOARD_VERTICES, corners_list[i-1], True)
-            _, rvec, tvec, _ = cv.solvePnPRansac(
-                po, corners_list[i-1], mtx, dist)
-            vp, _ = cv.projectPoints(cube_vertices(
-                0, 0, 0, 2), rvec, tvec, mtx, dist)
-            
-            axis = np.float32([[3, 0, 0], [0, 3, 0], [0, 0, -3]]).reshape(-1, 3)
-            vp_axis, _ = cv.projectPoints(axis, rvec, tvec, mtx, dist)
-            
-            imgcopy = draw_cube(imgcopy, vp.round().astype(np.int32))
-            imgcopy = draw_axis(
-                imgcopy, corners_list[i-1].round().astype(np.int32), vp_axis.round().astype(np.int32))
-            show_image(imgcopy)
-
-    runs = [[]]
