@@ -93,7 +93,7 @@ def interpolate_corners(image, edges):
         transformed_vertices.reshape(1, -1, 2), M_inv))
     original_vertices = original_vertices.reshape(-1, 2)
 
-    image = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
     original_vertices = cv.cornerSubPix(
         image, original_vertices, (11, 11), (-1, -1), TERMINATION_CRITERIA)
 
@@ -107,14 +107,6 @@ for i in range(1, 31):  # for each training image
     h, w = img.shape[:2]  # extract height and with
 
     ret, corners = find_chessboard(img)  # get corners
-
-    # per ora teniamo
-    # if i == 23:
-    #     cornerizzata = img.copy()
-    #     cv.drawChessboardCorners(
-    #         cornerizzata, CHESSBOARD_VERTICES, corners, True)
-    #     show_image(cornerizzata)
-    #     print(corners)
 
     if not ret:  # if the corners were not automatically detected
         edges = []  # list of outmost corners to be annotated
@@ -134,14 +126,13 @@ for i in range(1, 31):  # for each training image
     corners_list.append(corners)  # store detected corners for calibration
 
 
-# Training Phase
+# Calibration Phase
 
 # Saving corners and 3D coordinates for online phase:
 np.savez('corners', corners=corners_list, punti_oggetto=punti_oggetto)
 # Run 1 (all images)
 err_run1, matIntr_run1, distCoeff_run1, rotEstr_run1, traEstr_run1 = cv.calibrateCamera(
     punti_oggetto, corners_list, (w, h), None, None)
-print(err_run1)
 # store parameters for online phase
 np.savez('camera_matrix_Run1', mtx=matIntr_run1, dist=distCoeff_run1)
 # Run 2 (only 10)

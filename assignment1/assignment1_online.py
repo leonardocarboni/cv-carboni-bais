@@ -64,12 +64,13 @@ def show_image(img, name="chessboard"):
     cv.destroyAllWindows()
 
 
-print("Select traning: ")
+print("Select training (1-2-3) or other options: ")
 print("1. All images")
 print("2. 10 images where corners are found automatically")
 print("3. 5 images where corners are found automatically")
 print("4. 3 Runs comparison with pre-recorded video.")
 print("5. See camera parameters")
+print("6. Shoot new video for runs comparison")
 
 training_i = input("Select the run to test or the desired action: ")
 
@@ -108,7 +109,6 @@ if training_i == '4':
                             frame, vp_cube.round().astype(np.int32)))
                         cv.waitKey(0)
 
-                        #print(f"frame {n_frame}, run {filei}:" + f"{np.abs(first_vp - first)} {np.abs(second_vp-second)} {np.abs(third_vp - third)} {np.abs(fourth_vp-fourth)}")
                         errors[filei-1, n_frame, 0,
                                0] = np.abs(first_vp - first)[0]
                         errors[filei-1, n_frame, 1,
@@ -149,9 +149,23 @@ elif training_i == '5':
         mtxRun2, distRun2 = [file[i] for i in ['mtx', 'dist']]
     with np.load(f'camera_matrix_Run3.npz') as file:
         mtxRun3, distRun3 = [file[i] for i in ['mtx', 'dist']]
-    print(f"Camera Parameters for Run 1: {mtxRun1}")
-    print(f"Camera Parameters for Run 2: {mtxRun2}")
-    print(f"Camera Parameters for Run 3: {mtxRun3}")
+    print(f"Camera Parameters for Run 1:\n {mtxRun1}")
+    print(f"Camera Parameters for Run 2:\n {mtxRun2}")
+    print(f"Camera Parameters for Run 3:\n {mtxRun3}")
+
+elif training_i == '6':
+    vid = cv.VideoCapture(0)
+    ret, frame = vid.read()
+    h, w = frame.shape[:2]
+    out = cv.VideoWriter('outpy.avi', cv.VideoWriter_fourcc(
+        'M', 'J', 'P', 'G'), 10, (w, h))
+    for i in range(500):
+        ret, frame = vid.read()
+        if ret:
+            out.write(frame)
+    vid.release()
+    out.release()
+    cv.destroyAllWindows()
 
 elif training_i == "1" or training_i == "2" or training_i == "3":
     with np.load(f'camera_matrix_Run{training_i}.npz') as file:
@@ -160,12 +174,8 @@ elif training_i == "1" or training_i == "2" or training_i == "3":
     print("Select action: ")
     print("1. Webcam with cube")
     print("2. Webcam with cube and corners")
-    print("3. Images with cube without correction")
-    print("4. Images with cube and corners without correction")
-    print("5. Images with cube with correction")
-    print("6. Images with cube and corners with correction")
-    print("7. Test the three runs with video")
-    print("8. Shoot new video for video test")
+    print("3. Images with cube")
+    print("4. Images with cube and corners")
     action_i = input("Select what to do: ")
 
     if action_i == "1" or action_i == "2":
@@ -218,17 +228,3 @@ elif training_i == "1" or training_i == "2" or training_i == "3":
             show_image(imgcopy)
 
     runs = [[]]
-
-    if action_i == "8":
-        vid = cv.VideoCapture(0)
-        ret, frame = vid.read()
-        h, w = frame.shape[:2]
-        out = cv.VideoWriter('outpy.avi', cv.VideoWriter_fourcc(
-            'M', 'J', 'P', 'G'), 10, (w, h))
-        for i in range(500):
-            ret, frame = vid.read()
-            if ret:
-                out.write(frame)
-        vid.release()
-        out.release()
-        cv.destroyAllWindows()
