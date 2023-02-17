@@ -123,7 +123,7 @@ if choiche_action in ["1", "2", "3", "4"]:
             ret, frame = vid.read()
             retC, corners = find_chessboard(frame)
             if retC:
-                _, rvec, tvec, _ = cv.solvePnPRansac(
+                _, rvec, tvec = cv.solvePnP(
                     objp, corners, mtx, dist)
                 vp, _ = cv.projectPoints(cube_vertices(
                     0, 0, 0, 2), rvec, tvec, mtx, dist)
@@ -163,7 +163,7 @@ if choiche_action in ["1", "2", "3", "4"]:
                 cv.drawChessboardCorners(
                     img, CHESSBOARD_VERTICES, corners_list[i-1], True)
 
-            _, rvec, tvec, _ = cv.solvePnPRansac(
+            _, rvec, tvec = cv.solvePnP(
                 objp, corners_list[i-1], mtx, dist)
             vp, _ = cv.projectPoints(cube_vertices(
                 0, 0, 0, 2), rvec, tvec, mtx, dist)
@@ -193,7 +193,7 @@ elif choiche_action == "5":
                 for filei in range(1, 4):
                     with np.load(f'camera_matrix_Run{filei}.npz') as file:
                         mtx, dist = [file[i] for i in ['mtx', 'dist']]
-                        _, rvec, tvec, _ = cv.solvePnPRansac(
+                        _, rvec, tvec = cv.solvePnP(
                             objp, corners, mtx, dist)
 
                         vp_cube, _ = cv.projectPoints(cube_vertices(
