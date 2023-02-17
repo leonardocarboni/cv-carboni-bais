@@ -180,33 +180,34 @@ if choiche_action in ["1", "2", "3", "4"]:
 
 # 3 runs comparison with pre-recorded video
 elif choiche_action == "5":
-    nframes = 325
-    errors = np.zeros((3, nframes, 4, 2))
+    
     n_frame = 0
     cap = cv.VideoCapture("./video.avi")
-    
+    errors = np.zeros((3, int(cap.get(cv.CAP_PROP_FRAME_COUNT)), 4, 2))
     while cap.isOpened():
         ret, frame = cap.read()
         if ret:
-            retC, corners = find_chessboard(frame)
+            retC, corners = cv.findChessboardCorners(
+                frame, CHESSBOARD_VERTICES)
             if retC:
+                first, second, third, fourth = (
+                    corners[0, 0], corners[2, 0], corners[18, 0], corners[20, 0])
+                
                 for filei in range(1, 4):
                     with np.load(f'camera_matrix_Run{filei}.npz') as file:
                         mtx, dist = [file[i] for i in ['mtx', 'dist']]
                         _, rvec, tvec = cv.solvePnP(
                             objp, corners, mtx, dist)
-
+                        
                         vp_cube, _ = cv.projectPoints(cube_vertices(
                             0, 0, 0, 2), rvec, tvec, mtx, dist)
 
-                        first, second, third, fourth = (
-                            corners[0, 0], corners[2, 0], corners[18, 0], corners[20, 0])
                         first_vp, second_vp, third_vp, fourth_vp = (
                             vp_cube[0, 0], vp_cube[1, 0], vp_cube[3, 0], vp_cube[2, 0])
 
-                        cv.imshow("frame", draw_cube(
-                            frame, vp_cube.round().astype(np.int32)))
-                        cv.waitKey(0)
+                        # cv.imshow("frame", draw_cube(
+                        #     frame, vp_cube.round().astype(np.int32)))
+                        # cv.waitKey(0)
 
                         errors[filei-1, n_frame, 0,
                                0] = np.abs(first_vp - first)[0]
