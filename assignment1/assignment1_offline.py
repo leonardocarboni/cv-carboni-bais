@@ -16,18 +16,25 @@ object_points = []
 op = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
                for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32)
 
-# callback function to manually annotate the four outmost corner points
-
 
 def click_event(event, x, y, flags, params):
+    """
+    callback function to manually annotate the four outmost corner points
+    """
     if event == cv.EVENT_LBUTTONDOWN and len(edges) < 4:
         edges.append((x, y))
         print(f"Edge set: ({x}, {y}), Select {4-len(edges)} more corners")
 
-# function to automatically detect all corners of the chessboard, with augmented precision of subpixel detection
-
 
 def find_chessboard(img):
+    """
+    It converts the image to gray scale, finds the corners of the chessboard, and then augments the
+    precision of the corners
+
+    :param img: the image to be processed
+    :return: ret is a boolean value that is true if the corners were found and false if they were not.
+    corners is a list of the coordinates of the corners.
+    """
     gray_img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)  # convert to gray scale
     ret, corners = cv.findChessboardCorners(
         gray_img, CHESSBOARD_VERTICES)  # find all corners automatically
@@ -37,19 +44,14 @@ def find_chessboard(img):
     return ret, corners
 
 
-# function to display an image
-
-
-def show_image(img, name="chessboard"):
-    cv.namedWindow(name, cv.WINDOW_NORMAL)
-    cv.imshow("chessboard", img)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
-
-# function to estimate internal corner positions through linear interpolation
-
-
 def interpolate_corners(image, edges):
+    """
+    It estimates internal corner positions through linear interpolation
+
+    :param image: the image 
+    :param edges: the edges of the chessboard in the original image
+    :return: the coordinates of the corners of the chessboard in the original image.
+    """
 
     # number of squares for each row
     horizontal_squares = CHESSBOARD_VERTICES[0] - 1
