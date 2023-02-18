@@ -101,11 +101,12 @@ print("4. Images with cube and corners")
 print("5. 3 Runs comparison with pre-recorded video.")
 print("6. See camera parameters")
 print("7. Shoot new video for runs comparison")
-choiche_action = input("Select action: ")
+print("8. See standard deviations of estimated instrinsic parameters")
+choice_action = input("Select action: ")
 
 
 # actions that require training
-if choiche_action in ["1", "2", "3", "4"]:
+if choice_action in ["1", "2", "3", "4"]:
     print("Select training set: ")
     print("1. All images")
     print("2. 10 images where corners are found automatically")
@@ -116,7 +117,7 @@ if choiche_action in ["1", "2", "3", "4"]:
         mtx, dist = [file[i] for i in ['mtx', 'dist']]
 
     # webcam
-    if choiche_action in ["1", "2"]:
+    if choice_action in ["1", "2"]:
         vid = cv.VideoCapture(0)
 
         while(True):
@@ -129,7 +130,7 @@ if choiche_action in ["1", "2", "3", "4"]:
                     0, 0, 0, 2), rvec, tvec, mtx, dist)
 
                 # draw corners too
-                if choiche_action == "2":
+                if choice_action == "2":
                     cv.drawChessboardCorners(
                         frame, CHESSBOARD_VERTICES, corners, True)
 
@@ -151,7 +152,7 @@ if choiche_action in ["1", "2", "3", "4"]:
         vid.release()
         cv.destroyAllWindows()
 
-    elif choiche_action in ["3", "4"]:
+    elif choice_action in ["3", "4"]:
         # read images 1 to 30
         for i in range(1, 31):
             img = cv.imread(
@@ -159,7 +160,7 @@ if choiche_action in ["1", "2", "3", "4"]:
             h, w = img.shape[:2]
 
             # draw corners too
-            if choiche_action == "4":
+            if choice_action == "4":
                 cv.drawChessboardCorners(
                     img, CHESSBOARD_VERTICES, corners_list[i-1], True)
 
@@ -179,7 +180,7 @@ if choiche_action in ["1", "2", "3", "4"]:
             show_image(img)
 
 # 3 runs comparison with pre-recorded video
-elif choiche_action == "5":
+elif choice_action == "5":
     cap = cv.VideoCapture("./video.avi")
     reprojection_error = [0, 0, 0]
     n_frame = 0
@@ -261,7 +262,7 @@ elif choiche_action == "5":
         f"Avg error of Run 3, coordinate Y: {np.mean(cube_errors[2, :, :, 1])} with Std {sem(cube_errors[2, :, :, 1].ravel())}")
 
 # see camera parameters
-elif choiche_action == "6":
+elif choice_action == "6":
     with np.load(f'camera_matrix_Run1.npz') as file:
         mtxRun1, distRun1 = [file[i] for i in ['mtx', 'dist']]
     with np.load(f'camera_matrix_Run2.npz') as file:
@@ -273,7 +274,7 @@ elif choiche_action == "6":
     print(f"Camera Parameters for Run 3:\n {mtxRun3}")
 
 # shoot new video
-elif choiche_action == "7":
+elif choice_action == "7":
     vid = cv.VideoCapture(0)
     ret, frame = vid.read()
     h, w = frame.shape[:2]
@@ -286,3 +287,25 @@ elif choiche_action == "7":
     vid.release()
     out.release()
     cv.destroyAllWindows()
+
+# calculate standard deviations of estimated intrinsic parameters
+elif choice_action == '8':
+    w, h = (1920, 1080) # images size
+    i = 0 # start of subset
+    j = 10 # end of subset
+    matrixes = [] # list of matrixes for each calibration
+    for _ in range(10): # 10 calibration runs
+        matrixes.append(cv.calibrateCamera(object_points[i:j], corners_list[i:j], (w, h), None, None)[1]) # calibrate camera using a subset of images and extract matrix
+        i+=2 # next subset
+        j+=2 # next subset
+    focal_points_x = []
+    focal_points_y = []
+    center_x = []
+    center_y = []
+    for i in range(10):
+        focal_points_x.append(matrixes[i][0][0])
+        focal_points_y.append(matrixes[i][1][1])
+        center_x.append(matrixes[i][0][2])
+        center_y.append(matrixes[i][1][2])
+    print(f"Focal point standard deviation is: ({np.std(focal_points_x)}, {np.std(focal_points_y)})")
+    print(f"Origin standard deviation is: ({np.std(center_x)}, {np.std(center_y)})")
