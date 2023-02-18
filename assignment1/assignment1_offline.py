@@ -12,8 +12,8 @@ TERMINATION_CRITERIA = (cv.TERM_CRITERIA_EPS +
 corners_list = []
 
 # 3D coordinates of all corners for camera calibration
-punti_oggetto = []
-po = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
+object_points = []
+op = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
                for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32)
 
 # callback function to manually annotate the four outmost corner points
@@ -65,7 +65,6 @@ def interpolate_corners(image, edges):
     # Define the corners of the rectified image
     dst_corners = np.array([[0, 0], [dst_size[0], 0], [0, dst_size[1]], [
                            dst_size[0], dst_size[1]]], dtype=np.float32)
-    # TODO what is the point of having two?
     rectified_corners = np.array([[0, 0], [dst_size[0], 0], [
                                  dst_size[0], dst_size[1]], [0, dst_size[1]]], dtype=np.float32)
 
@@ -122,26 +121,26 @@ for i in range(1, 31):  # for each training image
         # corners = interpolate_corners(edges)
 
     print(f"{i}: n corners = {len(corners)}")
-    punti_oggetto.append(po)  # store 3d coordinates for calibration
+    object_points.append(op)  # store 3d coordinates for calibration
     corners_list.append(corners)  # store detected corners for calibration
 
 
 # Calibration Phase
 
 # Saving corners and 3D coordinates for online phase:
-np.savez('corners', corners=corners_list, punti_oggetto=punti_oggetto)
+np.savez('corners', corners=corners_list, punti_oggetto=object_points)
 # Run 1 (all images)
 err_run1, matIntr_run1, distCoeff_run1, rotEstr_run1, traEstr_run1 = cv.calibrateCamera(
-    punti_oggetto, corners_list, (w, h), None, None)
+    object_points, corners_list, (w, h), None, None)
 # store parameters for online phase
 np.savez('camera_matrix_Run1', mtx=matIntr_run1, dist=distCoeff_run1)
 # Run 2 (only 10)
 err_run2, matIntr_run2, distCoeff_run2, rotEstr_run2, traEstr_run2 = cv.calibrateCamera(
-    punti_oggetto[:10], corners_list[:10], (w, h), None, None)
+    object_points[:10], corners_list[:10], (w, h), None, None)
 # store parameters for online phase
 np.savez('camera_matrix_Run2', mtx=matIntr_run2, dist=distCoeff_run2)
 # Run 3 (only 5)
 err_run3, matIntr_run3, distCoeff_run3, rotEstr_run3, traEstr_run3 = cv.calibrateCamera(
-    punti_oggetto[:5], corners_list[:5], (w, h), None, None)
+    object_points[:5], corners_list[:5], (w, h), None, None)
 # store parameters for online phase
 np.savez('camera_matrix_Run3', mtx=matIntr_run3, dist=distCoeff_run3)

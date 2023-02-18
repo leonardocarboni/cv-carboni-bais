@@ -180,67 +180,85 @@ if choiche_action in ["1", "2", "3", "4"]:
 
 # 3 runs comparison with pre-recorded video
 elif choiche_action == "5":
-    
-    n_frame = 0
     cap = cv.VideoCapture("./video.avi")
-    errors = np.zeros((3, int(cap.get(cv.CAP_PROP_FRAME_COUNT)), 4, 2))
+    reprojection_error = [0, 0, 0]
+    n_frame = 0
+    objpoints = []
+    cube_errors = np.zeros((3, int(cap.get(cv.CAP_PROP_FRAME_COUNT)), 4, 2))
+
     while cap.isOpened():
         ret, frame = cap.read()
         if ret:
+            objpoints.append(objp)
             retC, corners = cv.findChessboardCorners(
                 frame, CHESSBOARD_VERTICES)
+
             if retC:
                 first, second, third, fourth = (
                     corners[0, 0], corners[2, 0], corners[18, 0], corners[20, 0])
-                
+
                 for filei in range(1, 4):
                     with np.load(f'camera_matrix_Run{filei}.npz') as file:
+
                         mtx, dist = [file[i] for i in ['mtx', 'dist']]
                         _, rvec, tvec = cv.solvePnP(
-                            objp, corners, mtx, dist)
-                        
+                            objpoints[n_frame], corners, mtx, dist)
+
+                        # reprojection error
+                        imgpoints2, _ = cv.projectPoints(
+                            objpoints[n_frame], rvec, tvec, mtx, dist)
+                        error = cv.norm(corners, imgpoints2,
+                                        cv.NORM_L2)/len(imgpoints2)
+                        reprojection_error[filei-1] += error
+
+                        # manual test with cube
                         vp_cube, _ = cv.projectPoints(cube_vertices(
                             0, 0, 0, 2), rvec, tvec, mtx, dist)
 
                         first_vp, second_vp, third_vp, fourth_vp = (
                             vp_cube[0, 0], vp_cube[1, 0], vp_cube[3, 0], vp_cube[2, 0])
 
-                        # cv.imshow("frame", draw_cube(
-                        #     frame, vp_cube.round().astype(np.int32)))
-                        # cv.waitKey(0)
-
-                        errors[filei-1, n_frame, 0,
-                               0] = np.abs(first_vp - first)[0]
-                        errors[filei-1, n_frame, 1,
-                               0] = np.abs(second_vp - second)[0]
-                        errors[filei-1, n_frame, 2,
-                               0] = np.abs(third_vp - third)[0]
-                        errors[filei-1, n_frame, 3,
-                               0] = np.abs(fourth_vp - fourth)[0]
-                        errors[filei-1, n_frame, 0,
-                               1] = np.abs(first_vp - first)[1]
-                        errors[filei-1, n_frame, 1,
-                               1] = np.abs(second_vp - second)[1]
-                        errors[filei-1, n_frame, 2,
-                               1] = np.abs(third_vp - third)[1]
-                        errors[filei-1, n_frame, 3,
-                               1] = np.abs(fourth_vp - fourth)[1]
+                        cube_errors[filei-1, n_frame, 0,
+                                    0] = np.abs(first_vp - first)[0]
+                        cube_errors[filei-1, n_frame, 1,
+                                    0] = np.abs(second_vp - second)[0]
+                        cube_errors[filei-1, n_frame, 2,
+                                    0] = np.abs(third_vp - third)[0]
+                        cube_errors[filei-1, n_frame, 3,
+                                    0] = np.abs(fourth_vp - fourth)[0]
+                        cube_errors[filei-1, n_frame, 0,
+                                    1] = np.abs(first_vp - first)[1]
+                        cube_errors[filei-1, n_frame, 1,
+                                    1] = np.abs(second_vp - second)[1]
+                        cube_errors[filei-1, n_frame, 2,
+                                    1] = np.abs(third_vp - third)[1]
+                        cube_errors[filei-1, n_frame, 3,
+                                    1] = np.abs(fourth_vp - fourth)[1]
                 n_frame += 1
         else:
             break
+
     cap.release()
+
+    print("Reprojection error run 1: {}".format(
+        reprojection_error[0]/len(objpoints)))
+    print("Reprojection error run 2: {}".format(
+        reprojection_error[1]/len(objpoints)))
+    print("Reprojection error run 3: {}".format(
+        reprojection_error[2]/len(objpoints)))
+
     print(
-        f"Avg error of Run 1, coordinate X: {np.mean(errors[0, :, :, 0])} with Std {sem(errors[0, :, :, 0].ravel())}")
+        f"Avg error of Run 1, coordinate X: {np.mean(cube_errors[0, :, :, 0])} with Std {sem(cube_errors[0, :, :, 0].ravel())}")
     print(
-        f"Avg error of Run 1, coordinate Y: {np.mean(errors[0, :, :, 1])} with Std {sem(errors[0, :, :, 1].ravel())}")
+        f"Avg error of Run 1, coordinate Y: {np.mean(cube_errors[0, :, :, 1])} with Std {sem(cube_errors[0, :, :, 1].ravel())}")
     print(
-        f"Avg error of Run 2, coordinate X: {np.mean(errors[1, :, :, 0])} with Std {sem(errors[1, :, :, 0].ravel())}")
+        f"Avg error of Run 2, coordinate X: {np.mean(cube_errors[1, :, :, 0])} with Std {sem(cube_errors[1, :, :, 0].ravel())}")
     print(
-        f"Avg error of Run 2, coordinate Y: {np.mean(errors[1, :, :, 1])} with Std {sem(errors[1, :, :, 1].ravel())}")
+        f"Avg error of Run 2, coordinate Y: {np.mean(cube_errors[1, :, :, 1])} with Std {sem(cube_errors[1, :, :, 1].ravel())}")
     print(
-        f"Avg error of Run 3, coordinate X: {np.mean(errors[2, :, :, 0])} with Std {sem(errors[2, :, :, 0].ravel())}")
+        f"Avg error of Run 3, coordinate X: {np.mean(cube_errors[2, :, :, 0])} with Std {sem(cube_errors[2, :, :, 0].ravel())}")
     print(
-        f"Avg error of Run 3, coordinate Y: {np.mean(errors[2, :, :, 1])} with Std {sem(errors[2, :, :, 1].ravel())}")
+        f"Avg error of Run 3, coordinate Y: {np.mean(cube_errors[2, :, :, 1])} with Std {sem(cube_errors[2, :, :, 1].ravel())}")
 
 # see camera parameters
 elif choiche_action == "6":
