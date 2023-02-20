@@ -44,46 +44,61 @@ def click_event(event, x, y, flags, params):
         print(f"Edge set: ({x}, {y}), Select {4-len(edges)} more corners")
 
 
-def interpolate_corners(image, edges):
+def interpolate_corners(image, image_edges):
     """
     It estimates internal corner positions through linear interpolation
 
     :param image: the image 
-    :param edges: the edges of the chessboard in the original image
+    :param image_edges: the edges of the chessboard in the original image
     :return: the coordinates of the corners of the chessboard in the original image.
     """
 
-    # number of squares for each row
-    horizontal_squares = CHESSBOARD_VERTICES[0] - 1
-    # number of squares for each column
-    vertical_squares = CHESSBOARD_VERTICES[1] - 1
-
-
+    horizontal_squares = CHESSBOARD_VERTICES[0]
+    vertical_squares = CHESSBOARD_VERTICES[1]
+    
     # size of the rectified image
     dst_size = (horizontal_squares * dim_square,
                 vertical_squares * dim_square)
 
+    print("----- dst_size -----")
+    print(dst_size)
+    
     # Define the corners of the rectified image
     dst_corners = np.array([[0, 0], [dst_size[0], 0], [0, dst_size[1]], [
                            dst_size[0], dst_size[1]]], dtype=np.float32)
+    print("----- dst_corners -----")
+    print(dst_corners)
+    
     rectified_corners = np.array([[0, 0], [dst_size[0], 0], [
                                  dst_size[0], dst_size[1]], [0, dst_size[1]]], dtype=np.float32)
-
+    
     # Compute the perspective transformation matrix
     M = cv.getPerspectiveTransform(
-        np.array(edges, dtype=np.float32), dst_corners)
-
+        np.array(image_edges, dtype=np.float32), dst_corners)
+    
     # all corners coordinates in the rectified image
     transformed_vertices = np.zeros(
         (CHESSBOARD_VERTICES[1], CHESSBOARD_VERTICES[0], 2))
-
+    
     for i in range(CHESSBOARD_VERTICES[1]):  # for each row of the chessboard
         # for each column of the chessboard
         for j in range(CHESSBOARD_VERTICES[0]):
             # store the estimated x coordinate of the (i,j) edge using linear interpolation
-            transformed_vertices[i, j, 0] = rectified_corners[0][0] + j * dim_square
+            transformed_vertices[i, j,
+                                 0] = rectified_corners[0][0] + j * dim_square
             # store the estimated y coordinate of the (i,j) edge using linear interpolation
-            transformed_vertices[i, j, 1] = rectified_corners[0][1] + i * dim_square
+            transformed_vertices[i, j,
+                                 1] = rectified_corners[0][1] + i * dim_square
+            
+    print("----- transformed_vertices -----")
+    print(transformed_vertices)
+    
+    # sugo = cv.warpPerspective(image, M, (image.shape[0], image.shape[1]))
+    # sugo = cv.drawChessboardCorners(sugo, CHESSBOARD_VERTICES, np.array(
+    #     transformed_vertices.reshape(1, -1, 2), dtype=np.float32), True)
+    # cv.imshow("sugo", sugo)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
 
     # extract the inverse transformation matrix
     M_inv = np.linalg.inv(M)
@@ -92,10 +107,13 @@ def interpolate_corners(image, edges):
     original_vertices = np.float32(cv.perspectiveTransform(
         transformed_vertices.reshape(1, -1, 2), M_inv))
     original_vertices = original_vertices.reshape(-1, 2)
+    print(original_vertices)
+    print(image_edges)
 
-    image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    original_vertices = cv.cornerSubPix(
-        image, original_vertices, (11, 11), (-1, -1), TERMINATION_CRITERIA)
+    #image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    
+    # original_vertices = cv.cornerSubPix(
+    #     image, original_vertices, (11, 11), (-1, -1), TERMINATION_CRITERIA)
 
     return np.array(original_vertices, dtype=np.float32)
 
@@ -103,7 +121,6 @@ def interpolate_corners(image, edges):
 CHESSBOARD_VERTICES = (8, 6)
 TERMINATION_CRITERIA = (cv.TERM_CRITERIA_EPS +
                         cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-
 
 op = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
                for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32)
@@ -144,7 +161,7 @@ for camera_i in range(1, 5):
     i = 0
     while cap.isOpened():
         retF, frame = cap.read()
-        frame = cv.cvtColor(frame, cv.COLOR_RGB2GRAY)
+        # frame = cv.cvtColor(frame, cv.COLOR_RGB2GRAY)
         if retF:
             retC, corners = cv.findChessboardCorners(
                 frame, CHESSBOARD_VERTICES)
@@ -159,21 +176,18 @@ for camera_i in range(1, 5):
                 corners = np.array(interpolate_corners(frame, edges))[
                     :, np.newaxis]
                 cv.namedWindow("PUTTANA TUA MAMMA", cv.WINDOW_NORMAL)
-                cv.imshow("PUTTANA TUA MAMMA", cv.drawChessboardCorners(frame, CHESSBOARD_VERTICES, corners, True))
+                cv.imshow("PUTTANA TUA MAMMA", cv.drawChessboardCorners(
+                    frame, (CHESSBOARD_VERTICES[0], CHESSBOARD_VERTICES[1]), corners, True))
                 cv.waitKey(0)
                 cv.destroyAllWindows()
 
             image_points_extrinsics.append(corners)
             object_points_extrinsics.append(op)
-            if i == 2:
-                break
-            i+=1
-        else:
-            break
+        break
     cap.release()
-    
-    retval_extr, rvec_extr, tvec_extr = cv.solvePnP(
-        object_points_extrinsics, image_points_extrinsics, camera_matrix, dist_coeffs, rvecs, tvecs, False, cv.SOLVEPNP_ITERATIVE)
 
-    np.savez(f"data/cam{camera_i}/config", camera_matrix=camera_matrix,
-             dist_coeffs=dist_coeffs, rvec_extr=rvec_extr, tvec_extr=tvec_extr)
+    # retval_extr, rvec_extr, tvec_extr = cv.solvePnP(
+    #     object_points_extrinsics, image_points_extrinsics, camera_matrix, dist_coeffs, rvecs, tvecs, False, cv.SOLVEPNP_ITERATIVE)
+
+    # np.savez(f"data/cam{camera_i}/config", camera_matrix=camera_matrix,
+    #          dist_coeffs=dist_coeffs, rvec_extr=rvec_extr, tvec_extr=tvec_extr)
