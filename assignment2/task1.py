@@ -58,11 +58,10 @@ def interpolate_corners(image, edges):
     # number of squares for each column
     vertical_squares = CHESSBOARD_VERTICES[1] - 1
 
-    square_size = 200
 
     # size of the rectified image
-    dst_size = (horizontal_squares * square_size,
-                vertical_squares * square_size)
+    dst_size = (horizontal_squares * dim_square,
+                vertical_squares * dim_square)
 
     # Define the corners of the rectified image
     dst_corners = np.array([[0, 0], [dst_size[0], 0], [0, dst_size[1]], [
@@ -82,9 +81,9 @@ def interpolate_corners(image, edges):
         # for each column of the chessboard
         for j in range(CHESSBOARD_VERTICES[0]):
             # store the estimated x coordinate of the (i,j) edge using linear interpolation
-            transformed_vertices[i, j, 0] = rectified_corners[0][0] + j * 200
+            transformed_vertices[i, j, 0] = rectified_corners[0][0] + j * dim_square
             # store the estimated y coordinate of the (i,j) edge using linear interpolation
-            transformed_vertices[i, j, 1] = rectified_corners[0][1] + i * 200
+            transformed_vertices[i, j, 1] = rectified_corners[0][1] + i * dim_square
 
     # extract the inverse transformation matrix
     M_inv = np.linalg.inv(M)
@@ -134,7 +133,7 @@ for camera_i in range(1, 5):
     ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv.calibrateCamera(
         object_points_intrinsics, image_points_intrinsics, (w, h), None, None)
 
-    save_xml(f"/data/cam{camera_i}/intrisics.xml", camera_matrix, dist_coeffs)
+    #save_xml(f"/data/cam{camera_i}/intrisics.xml", camera_matrix, dist_coeffs)
 
     # extrinsics
     image_points_extrinsics = []
@@ -145,6 +144,7 @@ for camera_i in range(1, 5):
     i = 0
     while cap.isOpened():
         retF, frame = cap.read()
+        frame = cv.cvtColor(frame, cv.COLOR_RGB2GRAY)
         if retF:
             retC, corners = cv.findChessboardCorners(
                 frame, CHESSBOARD_VERTICES)
@@ -158,9 +158,16 @@ for camera_i in range(1, 5):
                 cv.destroyAllWindows()
                 corners = np.array(interpolate_corners(frame, edges))[
                     :, np.newaxis]
+                cv.namedWindow("PUTTANA TUA MAMMA", cv.WINDOW_NORMAL)
+                cv.imshow("PUTTANA TUA MAMMA", cv.drawChessboardCorners(frame, CHESSBOARD_VERTICES, corners, True))
+                cv.waitKey(0)
+                cv.destroyAllWindows()
 
             image_points_extrinsics.append(corners)
             object_points_extrinsics.append(op)
+            if i == 2:
+                break
+            i+=1
         else:
             break
     cap.release()
