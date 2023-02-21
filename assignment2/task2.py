@@ -35,8 +35,8 @@ for camera_i in range(1, 5):
                 _ = backSub.apply(background_pixels)
                 mask = backSub.apply(frame)
 
-                mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (15, 15)))
-                mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
+                mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3)))
+                mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (25, 25)))
 
                 # Generate output
                 output = cv.bitwise_and(frame, frame, None, mask)
