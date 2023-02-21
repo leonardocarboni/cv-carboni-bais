@@ -223,8 +223,7 @@ for camera_i in range(1, 5):
     retval_extr, rvec_extr, tvec_extr = cv.solvePnP(
         np.array(object_points_extrinsics, dtype = np.float32), np.array(image_points_extrinsics, dtype = np.float32)[0], camera_matrix, dist_coeffs, flags = cv.SOLVEPNP_ITERATIVE)
 
-    R = cv.Rodrigues(rvec_extr)
-    
+    R = cv.Rodrigues(rvec_extr)[0]
     vp_axis, _ = cv.projectPoints(axis, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
     frame = draw_axis(frame, corners.round().astype(np.int32), vp_axis.round().astype(np.int32))
     cv.namedWindow("PUTTANA TUA MAMMA", cv.WINDOW_NORMAL)
@@ -232,4 +231,4 @@ for camera_i in range(1, 5):
     cv.waitKey(0)
     cv.destroyAllWindows()    
     np.savez(f"data/cam{camera_i}/config", camera_matrix=camera_matrix,
-             dist_coeffs=dist_coeffs, rvec_extr=rvec_extr, tvec_extr=tvec_extr)
+             dist_coeffs=dist_coeffs, rvec_extr=rvec_extr, tvec_extr=tvec_extr, R = R)
