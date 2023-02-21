@@ -1,23 +1,38 @@
 import numpy as np
 import cv2 as cv
 
-background_frames = 100
+background_frames = 20
 
 
 
-background_pixels = np.zeros((486, 644, 3), dtype = np.float32)
+background_pixels = np.zeros((644, 486, 3), dtype = np.float32)
+background_pixels_avg_red = 0
 for camera_i in range(1, 5):
     with np.load(f'./data/cam{camera_i}/config.npz') as file:
         camera_matrix, dist_coeffs, rvec_extr, tvec_extr, R = [file[i] for i in ['camera_matrix', 'dist_coeffs', 'rvec_extr', 'tvec_extr', 'R']]
         cap = cv.VideoCapture(f"./data/cam{camera_i}/background.avi")
-        n_frame = 0
-        while n_frame < background_frames:
+        for n_frame in range(background_frames):
             retF, frame = cap.read()
             if retF:
                 height, width, channels = frame.shape
-                #print(height, width)
-                for x in range(0, width) :
-                    for y in range(0, height) :
-                        background_pixels[x, y, 0] = frame[x,y,0] #B Channel Value
-                        background_pixels[x, y, 1] = frame[x,y,1] #G Channel Value
-                        background_pixels[x, y, 2] = frame[x,y,2] #R Channel Value
+                for y in range(0, height) :
+                    for x in range(0, width):
+                        background_pixels[x, y] += frame[y, x]
+                        
+        cap.release()
+        background_pixels = background_pixels / background_frames
+        cap = cv.VideoCapture(f"./data/cam{camera_i}/video.avi")
+        for n_frame in range(background_frames):
+            retF, frame = cap.read()
+            if retF:
+                backSub = cv.createBackgroundSubtractorMOG2()
+                fgMask = backSub.apply(frame)
+            
+            
+                cv.rectangle(frame, (10, 2), (100,20), (255,255,255), -1)
+                cv.putText(frame, str(cap.get(cv.CAP_PROP_POS_FRAMES)), (15, 15),
+                        cv.FONT_HERSHEY_SIMPLEX, 0.5 , (0,0,0))
+                
+                
+                cv.imshow('Frame', frame)
+                cv.imshow('FG Mask', fgMask)
