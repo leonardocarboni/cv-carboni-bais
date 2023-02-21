@@ -6,34 +6,8 @@ max_images = 25
 
 dim_square = 115
 
-axis = np.float32([[dim_square * 3, 0, 0], [0, dim_square * 3, 0], [0, 0, -dim_square * 3]]).reshape(-1, 3)
-
-def save_xml(xmlpath, matrix, distorsion):
-    xmltemplate = f"""
-    <?xml version="1.0"?>
-<opencv_storage>
-<CameraMatrix type_id="opencv-matrix">
-  <rows>{matrix.shape[0]}</rows>
-  <cols>{matrix.shape[1]}</cols>
-  <dt>f</dt>
-  <data>
-  {matrix}
-  </data>
-</CameraMatrix>
-<DistortionCoeffs type_id="opencv-matrix">
-  <rows>{distorsion.shape[0]}</rows>
-  <cols>{distorsion.shape[1]}</cols>
-  <dt>f</dt>
-  <data>
-    {distorsion}
-  </data>
-</DistortionCoeffs>
-</opencv_storage>
-"""
-
-    mytree = ET.fromstring(xmltemplate)
-
-    mytree.write(xmlpath)
+axis = np.float32([[dim_square * 3, 0, 0], [0, dim_square * 3,
+                  0], [0, 0, -dim_square * 3]]).reshape(-1, 3)
 
 
 def click_event(event, x, y, flags, params):
@@ -56,28 +30,26 @@ def interpolate_corners(image, image_edges):
 
     horizontal_squares = CHESSBOARD_VERTICES[0] - 1
     vertical_squares = CHESSBOARD_VERTICES[1] - 1
-    
+
     # size of the rectified image
     dst_size = (horizontal_squares * dim_square,
                 vertical_squares * dim_square)
-
 
     # Define the corners of the rectified image
     dst_corners = np.array([[0, 0], [dst_size[0], 0], [0, dst_size[1]], [
                            dst_size[0], dst_size[1]]], dtype=np.float32)
 
-    
     rectified_corners = np.array([[0, 0], [dst_size[0], 0], [
                                  dst_size[0], dst_size[1]], [0, dst_size[1]]], dtype=np.float32)
-    
+
     # Compute the perspective transformation matrix
     M = cv.getPerspectiveTransform(
         np.array(image_edges, dtype=np.float32), dst_corners)
-    
+
     # all corners coordinates in the rectified image
     transformed_vertices = np.zeros(
         (CHESSBOARD_VERTICES[1], CHESSBOARD_VERTICES[0], 2))
-    
+
     for i in range(CHESSBOARD_VERTICES[1]):  # for each row of the chessboard
         # for each column of the chessboard
         for j in range(CHESSBOARD_VERTICES[0]):
@@ -87,7 +59,6 @@ def interpolate_corners(image, image_edges):
             # store the estimated y coordinate of the (i,j) edge using linear interpolation
             transformed_vertices[i, j,
                                  1] = rectified_corners[0][1] + i * dim_square
-            
 
     # sugo = cv.warpPerspective(image, M, (image.shape[0], image.shape[1]))
     # sugo = cv.drawChessboardCorners(sugo, CHESSBOARD_VERTICES, np.array(
@@ -105,14 +76,14 @@ def interpolate_corners(image, image_edges):
     original_vertices = original_vertices.reshape(-1, 2)
 
     #image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    
+
     # original_vertices = cv.cornerSubPix(
     #     image, original_vertices, (11, 11), (-1, -1), TERMINATION_CRITERIA)
 
     return np.array(original_vertices, dtype=np.float32)
 
-def draw_axis(img, corners, vp):
 
+def draw_axis(img, corners, vp):
     """
     It draws the three axes of the plane on the image
 
@@ -127,6 +98,7 @@ def draw_axis(img, corners, vp):
     img = cv.line(img, corner, tuple(vp[2].ravel()), (255, 0, 255), 2)
     return img
 
+
 CHESSBOARD_VERTICES = (8, 6)
 TERMINATION_CRITERIA = (cv.TERM_CRITERIA_EPS +
                         cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -134,8 +106,8 @@ TERMINATION_CRITERIA = (cv.TERM_CRITERIA_EPS +
 op = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
                for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32) * dim_square
 op_3 = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[0])
-               for x in range(CHESSBOARD_VERTICES[1])], dtype=np.float32) * dim_square
-        
+                 for x in range(CHESSBOARD_VERTICES[1])], dtype=np.float32) * dim_square
+
 for camera_i in range(1, 5):
     image_points_intrinsics = []
     object_points_intrinsics = []
@@ -159,7 +131,7 @@ for camera_i in range(1, 5):
                 image_points_intrinsics.append(corners)
                 if camera_i != 3:
                     object_points_intrinsics.append(op)
-                else: 
+                else:
                     object_points_intrinsics.append(op_3)
             print(f"{i}: {retC}")
             i += 1
@@ -170,17 +142,20 @@ for camera_i in range(1, 5):
     ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv.calibrateCamera(
         object_points_intrinsics, image_points_intrinsics, (w, h), None, None)
 
-    #save_xml(f"/data/cam{camera_i}/intrisics.xml", camera_matrix, dist_coeffs)
     if camera_i != 3:
-        retval_extr, rvec_extr, tvec_extr = cv.solvePnP(op, corners, camera_matrix, dist_coeffs, flags = cv.SOLVEPNP_ITERATIVE)
+        retval_extr, rvec_extr, tvec_extr = cv.solvePnP(
+            op, corners, camera_matrix, dist_coeffs, flags=cv.SOLVEPNP_ITERATIVE)
     else:
-        retval_extr, rvec_extr, tvec_extr = cv.solvePnP(op_3, corners, camera_matrix, dist_coeffs, flags = cv.SOLVEPNP_ITERATIVE)
-    vp_axis, _ = cv.projectPoints(axis, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
-    frame = draw_axis(frame, corners.round().astype(np.int32), vp_axis.round().astype(np.int32))
-    cv.namedWindow("PUTTANA TUA MAMMA", cv.WINDOW_NORMAL)
-    cv.imshow("PUTTANA TUA MAMMA", frame)
+        retval_extr, rvec_extr, tvec_extr = cv.solvePnP(
+            op_3, corners, camera_matrix, dist_coeffs, flags=cv.SOLVEPNP_ITERATIVE)
+    vp_axis, _ = cv.projectPoints(
+        axis, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
+    frame = draw_axis(frame, corners.round().astype(
+        np.int32), vp_axis.round().astype(np.int32))
+    cv.namedWindow("frame", cv.WINDOW_NORMAL)
+    cv.imshow("frame", frame)
     cv.waitKey(0)
-    cv.destroyAllWindows()    
+    cv.destroyAllWindows()
     # extrinsics
     image_points_extrinsics = []
     object_points_extrinsics = []
@@ -190,14 +165,13 @@ for camera_i in range(1, 5):
     i = 0
     while cap.isOpened():
         retF, frame = cap.read()
-        # frame = cv.cvtColor(frame, cv.COLOR_RGB2GRAY)
         if retF:
             if camera_i != 3:
                 retC, corners = cv.findChessboardCorners(
                     frame, CHESSBOARD_VERTICES)
             else:
                 retC, corners = cv.findChessboardCorners(
-                frame, (6, 8))
+                    frame, (6, 8))
             if not retC:
                 edges = []  # list of outmost corners to be annotated
                 print(f"Corners not in image {i} found, Select them manually")
@@ -209,8 +183,8 @@ for camera_i in range(1, 5):
                 corners = np.array(interpolate_corners(frame, edges))[
                     :, np.newaxis]
                 frame_copy = frame.copy()
-                cv.namedWindow("PUTTANA TUA MAMMA", cv.WINDOW_NORMAL)
-                cv.imshow("PUTTANA TUA MAMMA", cv.drawChessboardCorners(
+                cv.namedWindow("frame", cv.WINDOW_NORMAL)
+                cv.imshow("frame", cv.drawChessboardCorners(
                     frame_copy, (CHESSBOARD_VERTICES[0], CHESSBOARD_VERTICES[1]), corners, True))
                 cv.waitKey(0)
                 cv.destroyAllWindows()
@@ -221,14 +195,16 @@ for camera_i in range(1, 5):
         break
     cap.release()
     retval_extr, rvec_extr, tvec_extr = cv.solvePnP(
-        np.array(object_points_extrinsics, dtype = np.float32), np.array(image_points_extrinsics, dtype = np.float32)[0], camera_matrix, dist_coeffs, flags = cv.SOLVEPNP_ITERATIVE)
+        np.array(object_points_extrinsics, dtype=np.float32), np.array(image_points_extrinsics, dtype=np.float32)[0], camera_matrix, dist_coeffs, flags=cv.SOLVEPNP_ITERATIVE)
 
     R = cv.Rodrigues(rvec_extr)[0]
-    vp_axis, _ = cv.projectPoints(axis, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
-    frame = draw_axis(frame, corners.round().astype(np.int32), vp_axis.round().astype(np.int32))
-    cv.namedWindow("PUTTANA TUA MAMMA", cv.WINDOW_NORMAL)
-    cv.imshow("PUTTANA TUA MAMMA", frame)
+    vp_axis, _ = cv.projectPoints(
+        axis, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
+    frame = draw_axis(frame, corners.round().astype(
+        np.int32), vp_axis.round().astype(np.int32))
+    cv.namedWindow("frame", cv.WINDOW_NORMAL)
+    cv.imshow("frame", frame)
     cv.waitKey(0)
-    cv.destroyAllWindows()    
+    cv.destroyAllWindows()
     np.savez(f"data/cam{camera_i}/config", camera_matrix=camera_matrix,
-             dist_coeffs=dist_coeffs, rvec_extr=rvec_extr, tvec_extr=tvec_extr, R = R)
+             dist_coeffs=dist_coeffs, rvec_extr=rvec_extr, tvec_extr=tvec_extr, R=R)
