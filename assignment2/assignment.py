@@ -1,6 +1,8 @@
 import glm
 import random
 import numpy as np
+import cv2 as cv
+from sklearn.preprocessing import normalize
 
 block_size = 1.0
 
@@ -30,10 +32,14 @@ def set_voxel_positions(width, height, depth):
 def get_cam_positions():
     # Generates dummy camera locations at the 4 corners of the room
     # TODO: You need to input the estimated locations of the 4 cameras in the world coordinates.
-    return [[-64 * block_size, 64 * block_size, 63 * block_size],
-            [63 * block_size, 64 * block_size, 63 * block_size],
-            [63 * block_size, 64 * block_size, -64 * block_size],
-            [-64 * block_size, 64 * block_size, -64 * block_size]]
+    positions = np.empty((4, 3))
+    for camera_i in range(1, 5):
+        s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
+        tvec_extr = s.getNode('tvec_extr').mat()
+        R = s.getNode('R_MAT').mat()
+        np.append(positions, np.dot(-np.matrix(R).T, tvec_extr))
+        s.release()
+    return positions
 
 
 def get_cam_rotation_matrices():
@@ -46,3 +52,14 @@ def get_cam_rotation_matrices():
         cam_rotations[c] = glm.rotate(cam_rotations[c], cam_angles[c][1] * np.pi / 180, [0, 1, 0])
         cam_rotations[c] = glm.rotate(cam_rotations[c], cam_angles[c][2] * np.pi / 180, [0, 0, 1])
     return cam_rotations
+
+
+# for camera_i in range(1, 5):
+#     s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
+#     camera_matrix = s.getNode('camera_matrix').mat()
+#     dist_coeffs = s.getNode('dist_coeffs').mat()
+#     tvec_extr = s.getNode('tvec_extr').mat()
+#     R = s.getNode('R_MAT').mat()
+#     print(np.dot(-R.T, tvec_extr))
+#     s.release()
+print(get_cam_positions())

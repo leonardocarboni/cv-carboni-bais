@@ -7,5 +7,5 @@ for camera_i in range(1, 5):
     dist_coeffs = s.getNode('dist_coeffs').mat()
     tvec_extr = s.getNode('tvec_extr').mat()
     R = s.getNode('R_MAT').mat()
-
+    print(np.dot(-R.T, tvec_extr))
     s.release()
