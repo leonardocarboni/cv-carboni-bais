@@ -32,19 +32,34 @@ def set_voxel_positions(width, height, depth):
 def get_cam_positions():
     # Generates dummy camera locations at the 4 corners of the room
     # TODO: You need to input the estimated locations of the 4 cameras in the world coordinates.
-    positions = np.empty((4, 3))
+    positions = []
     for camera_i in range(1, 5):
+        
         s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
         tvec_extr = s.getNode('tvec_extr').mat()
         R = s.getNode('R_MAT').mat()
-        np.append(positions, np.dot(-np.matrix(R).T, tvec_extr))
+        positions.append(np.dot(-R.T, tvec_extr))
         s.release()
+    positions = np.stack(positions)
+    positions = normalize(positions.squeeze(), axis=0) * 128
+    positions = positions.squeeze()
+    positions[:, [1, 2]] = positions[:, [2, 1]]
+    positions[:, 1] = np.abs(positions[:, 1])
     return positions
 
 
 def get_cam_rotation_matrices():
     # Generates dummy camera rotation matrices, looking down 45 degrees towards the center of the room
     # TODO: You need to input the estimated camera rotation matrices (4x4) of the 4 cameras in the world coordinates.
+    # cam_rotations = []
+    # for camera_i in range(1, 5):
+    #     s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
+    #     tvec_extr = s.getNode('tvec_extr').mat()
+    #     R = s.getNode('R_MAT').mat()
+    #     t1 = np.hstack((R, tvec_extr))
+    #     t1 = np.vstack((t1, [0, 0, 0, 1]))
+    #     cam_rotations.append(glm.mat4(t1))
+    
     cam_angles = [[0, 45, -45], [0, 135, -45], [0, 225, -45], [0, 315, -45]]
     cam_rotations = [glm.mat4(1), glm.mat4(1), glm.mat4(1), glm.mat4(1)]
     for c in range(len(cam_rotations)):
@@ -62,4 +77,4 @@ def get_cam_rotation_matrices():
 #     R = s.getNode('R_MAT').mat()
 #     print(np.dot(-R.T, tvec_extr))
 #     s.release()
-print(get_cam_positions())
+print(get_cam_rotation_matrices())
