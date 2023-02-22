@@ -195,7 +195,8 @@ for camera_i in range(1, 5):
         break
     cap.release()
     retval_extr, rvec_extr, tvec_extr = cv.solvePnP(
-        np.array(object_points_extrinsics, dtype=np.float32), np.array(image_points_extrinsics, dtype=np.float32)[0], camera_matrix, dist_coeffs, flags=cv.SOLVEPNP_ITERATIVE)
+        np.array(object_points_extrinsics, dtype=np.float32),
+        np.array(image_points_extrinsics, dtype=np.float32)[0], camera_matrix, dist_coeffs, flags=cv.SOLVEPNP_ITERATIVE)
 
     R = cv.Rodrigues(rvec_extr)[0]
     vp_axis, _ = cv.projectPoints(
@@ -206,5 +207,11 @@ for camera_i in range(1, 5):
     cv.imshow("frame", frame)
     cv.waitKey(0)
     cv.destroyAllWindows()
+    s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_WRITE)
+    s.write('camera_matrix', camera_matrix)
+    s.write('dist_coeffs', dist_coeffs)
+    s.write('tvec_extr', tvec_extr)
+    s.write('R_MAT', R)
+    s.release()
     np.savez(f"data/cam{camera_i}/config", camera_matrix=camera_matrix,
              dist_coeffs=dist_coeffs, rvec_extr=rvec_extr, tvec_extr=tvec_extr, R=R)
