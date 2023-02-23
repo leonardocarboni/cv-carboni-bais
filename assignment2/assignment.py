@@ -22,11 +22,11 @@ def set_voxel_positions(width, height, depth):
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     data = []
-    for x in range(width):
-        for y in range(height):
-            for z in range(depth):
-                if random.randint(0, 1000) < 5:
-                    data.append([x*block_size - width/2, y *
+    seta = [(4, 6, 13), (9, 12, 6)]
+    for x in range(width//3, width//3 * 2):
+        for y in range(height//2):
+            for z in range(depth//3, depth//3 * 2):
+                data.append([x*block_size - width/2, y *
                                 block_size, z*block_size - depth/2])
     return data
 
@@ -45,12 +45,12 @@ def get_cam_positions():
     positions = np.stack(positions)
     positions = normalize(positions.squeeze(), axis=0) * 64
     positions = positions.squeeze()
+    # converting from opencv space to glm space
+    # swap y and z
     positions[:, [1, 2]] = positions[:, [2, 1]]
-    
-    # # swap y and z
+    # abs y positions
     positions[:, 1] = np.abs(positions[:, 1])
-    # positions[:, 0] = positions[:, 0]
-    
+
     return positions
 
 
@@ -78,29 +78,33 @@ def get_cam_rotation_matrices():
             f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
         tvec_extr = s.getNode('tvec_extr').mat()
         R = s.getNode('R_MAT').mat()
-        
+
         # a = np.hstack((R, tvec_extr))
         # a = np.vstack((a, [0, 0, 0, 1]))
         # a = a.T
-        
+
         # R[:, [1, 2]] = R[:, [2, 1]]
         # # openai
-        t = np.array([tvec_extr[0], tvec_extr[2], tvec_extr[1]]).reshape(1, -1)
+        # t = np.array([tvec_extr[0], tvec_extr[2], tvec_extr[1]]).reshape(1, -1)
 
-        T = np.eye(4)
-        T[:3, :3] = R
-        T[:3, 3] = t
-        T[:, 2] = -T[:, 2]
+        # T = np.eye(4)
+        # T[:3, :3] = R
+        # T[:3, 3] = t
+        # T[:, 2] = -T[:, 2]
 
-        rot = glm.mat4(T.T)
+        # rot = glm.mat4(T.T)
         # rot = glm.rotate(rot, 45 * np.pi / 180, [1, 0, 0])
         # rot = glm.rotate(rot, -90 * np.pi / 180, [0, 1, 0])
         # rot = glm.rotate(rot, 45 * np.pi / 180, [0, 0, 1])
         # ours
-        # t1 = np.hstack((R, tvec_extr))
-        # t1 = np.vstack((t1, [0, 0, 0, 1]))
+        t1 = np.hstack((R, tvec_extr))
+        t1 = np.vstack((t1, [0, 0, 0, 1]))
+        # swap y and z
+        t1[:, [1, 2]] = t1[:, [2, 1]]
+        # abs y positions
+        # t1[:, 1] = np.abs(t1[:, 1])
 
-        cam_rotations.append(rot)
+        cam_rotations.append(glm.mat4(t1.T))
 
     # cam_angles = [[0, 45, -45], [0, 135, -45], [0, 225, -45], [0, 315, -45]]
     # cam_rotations = [glm.mat4(1), glm.mat4(1), glm.mat4(1), glm.mat4(1)]
@@ -110,7 +114,6 @@ def get_cam_rotation_matrices():
     #     cam_rotations[c] = glm.rotate(cam_rotations[c], cam_angles[c][2] * np.pi / 180, [0, 0, 1])
 
     return cam_rotations
-
 
 # for camera_i in range(1, 5):
 #     s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)

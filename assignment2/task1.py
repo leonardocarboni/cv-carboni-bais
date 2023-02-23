@@ -198,7 +198,7 @@ for camera_i in range(1, 5):
         np.array(object_points_extrinsics, dtype=np.float32),
         np.array(image_points_extrinsics, dtype=np.float32)[0], camera_matrix, dist_coeffs, flags=cv.SOLVEPNP_ITERATIVE)
 
-    R = cv.Rodrigues(rvec_extr)[0]
+    R, _ = cv.Rodrigues(rvec_extr)
     vp_axis, _ = cv.projectPoints(
         axis, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
     frame = draw_axis(frame, corners.round().astype(
