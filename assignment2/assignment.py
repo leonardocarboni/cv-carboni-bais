@@ -23,9 +23,9 @@ def set_voxel_positions(width, height, depth):
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     data = []
     seta = [(4, 6, 13), (9, 12, 6)]
-    for x in range(width//3, width//3 * 2):
-        for y in range(height//2):
-            for z in range(depth//3, depth//3 * 2):
+    for x in range(width):
+        for y in range(height):
+            for z in range(depth):
                 data.append([x*block_size - width/2, y *
                                 block_size, z*block_size - depth/2])
     return data
@@ -43,7 +43,7 @@ def get_cam_positions():
         positions.append(np.dot(-R.T, tvec_extr))
         s.release()
     positions = np.stack(positions)
-    positions = normalize(positions.squeeze(), axis=0) * 64
+    positions = normalize(positions.squeeze(), axis=0) * [128, 128, 64]
     positions = positions.squeeze()
     # converting from opencv space to glm space
     # swap y and z
@@ -101,10 +101,16 @@ def get_cam_rotation_matrices():
         t1 = np.vstack((t1, [0, 0, 0, 1]))
         # swap y and z
         t1[:, [1, 2]] = t1[:, [2, 1]]
+        # invert x rotation of the camears
+        t1[:, 1] = -t1[:, 1]
+        # transform to mat4
+        rot = glm.mat4(t1.T)
+        # rotate cameras by 90 degrees because they point on the wrong side TODO: FIX BECAUSE THEY SHOULD POINT DIRECTLY IN THE RIGHT SIDE.
+        rot = glm.rotate(rot, -90 * np.pi / 180, [0, 1, 0])
         # abs y positions
         # t1[:, 1] = np.abs(t1[:, 1])
 
-        cam_rotations.append(glm.mat4(t1.T))
+        cam_rotations.append(rot)
 
     # cam_angles = [[0, 45, -45], [0, 135, -45], [0, 225, -45], [0, 315, -45]]
     # cam_rotations = [glm.mat4(1), glm.mat4(1), glm.mat4(1), glm.mat4(1)]
