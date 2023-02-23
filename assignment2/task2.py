@@ -53,6 +53,7 @@ for camera_i in range(1, 5):
                 cv.imshow('output', output)
                 cv.waitKey(0)
                 cv.destroyAllWindows()
+                np.savez(f"data/cam{camera_i}/mask", mask=mask)
                 break
                 # #_ = backSub.apply(background_pixels)
                 # _ = backSub2.apply(background_pixels)

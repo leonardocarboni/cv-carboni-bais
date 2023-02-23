@@ -211,6 +211,7 @@ for camera_i in range(1, 5):
     s.write('camera_matrix', camera_matrix)
     s.write('dist_coeffs', dist_coeffs)
     s.write('tvec_extr', tvec_extr)
+    s.write('rvec_extr', rvec_extr)
     s.write('R_MAT', R)
     s.release()
     np.savez(f"data/cam{camera_i}/config", camera_matrix=camera_matrix,
