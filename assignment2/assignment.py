@@ -121,50 +121,55 @@ def get_cam_rotation_matrices():
 
     return cam_rotations
 
+
+# print(get_cam_positions())
+# print(get_cam_rotation_matrices())
+
+lookup_table = {}
+voxel_positions = np.array(set_voxel_positions(128,64,128), dtype = np.float32)
+
 # for camera_i in range(1, 5):
 #     s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
 #     camera_matrix = s.getNode('camera_matrix').mat()
 #     dist_coeffs = s.getNode('dist_coeffs').mat()
 #     tvec_extr = s.getNode('tvec_extr').mat()
-#     R = s.getNode('R_MAT').mat()
-#     print(np.dot(-R.T, tvec_extr))
+#     rvec_extr = s.getNode('rvec_extr').mat()
 #     s.release()
-print(get_cam_positions())
-print(get_cam_rotation_matrices())
+#     for pos in voxel_positions:
+#         imgpoint, _ = cv.projectPoints(pos, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
+#         lookup_table[(int(imgpoint.ravel()[0]), int(imgpoint.ravel()[1]), camera_i)] = (int(pos[0]), int(pos[1]), int(pos[2]))
 
-lookup_table = np.zeros((128,64,128, 4, 2), dtype = np.int8)
-voxel_positions = np.array(set_voxel_positions(128,64,128), dtype = np.float32)
-print(voxel_positions)
-for camera_i in range(1, 5):
-    s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
-    camera_matrix = s.getNode('camera_matrix').mat()
-    dist_coeffs = s.getNode('dist_coeffs').mat()
-    tvec_extr = s.getNode('tvec_extr').mat()
-    rvec_extr = s.getNode('rvec_extr').mat()
-    R = s.getNode('R_MAT').mat()
-    s.release()
-    # Project the 3D point onto the image plane
-    #point_2d, _ = cv.projectPoints(point_3d, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
-    
-    
-    for pos in voxel_positions:
-        imgpoint, _ = cv.projectPoints(pos, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
-        lookup_table[pos[0], pos[1], pos[2], camera_i, 0] = int(imgpoint.ravel()[0])
-        lookup_table[pos[0], pos[1], pos[2], camera_i, 1] = int(imgpoint.ravel()[1])
+# with open(f'data/lookup_table.txt','w+') as f:
+#     f.write(str(lookup_table))
 
+# Reading the stored lookup table
+lookup_table = ''
+with open(f'data/lookup_table.txt','r') as f:
+    for i in f.readlines():
+        lookup_table=i #string
+lookup_table = eval(lookup_table)
 
-visible_voxels = np.zeros_like((128,64,128,4), dtype=bool)
+visible_voxels = np.zeros((128,64,128,4), dtype=bool)
 
-# print(lookup_table)
 for camera_i in range(1, 5):
     with np.load(f'./data/cam{camera_i}/mask.npz') as file:
         mask= file['mask']
-    for pos in lookup_table[:, :, camera_i]:
-        x_mask, y_mask = int(pos[0]), int(pos[1])
-        if mask[x_mask, y_mask] != 0:
-            print(mask[x_mask, y_mask])
-            x_voxels, y_voxels, z_voxels = lookup_table[(pos[0], pos[1], pos[2])]
-            visible_voxels[x_voxels, y_voxels, z_voxels, camera_i] = True
+    for x, y, i in lookup_table:
+        if camera_i == i: # 2d imgpoints for camera_i
+            #x_mask, y_mask = int(x), int(y)
+            # print(x_mask, y_mask)
+            # print(mask[x_mask, y_mask])
+            if mask[x, y] != 0:
+                x_voxels, y_voxels, z_voxels = lookup_table[(x, y, camera_i)]
+                visible_voxels[x_voxels, y_voxels, z_voxels, camera_i-1] = True
 
-    break
-print(visible_voxels)
+
+# print(np.sum(visible_voxels[:,:,:, 0]))
+# all_cam_visible = np.zeros((128, 64, 128), dtype = bool)
+reconstruction = []
+for pos in voxel_positions:
+    x, y, z = int(pos[0]), int(pos[1]), int(pos[2])
+    if visible_voxels[x, y, z, 0] and visible_voxels[x, y, z, 1] and visible_voxels[x, y, z, 2] and visible_voxels[x, y, z, 3]:
+        # all_cam_visible[x, y, z] = True
+        reconstruction.append([x, y, z])
+print(reconstruction)

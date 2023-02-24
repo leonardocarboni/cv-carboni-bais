@@ -156,6 +156,7 @@ for camera_i in range(1, 5):
     cv.imshow("frame", frame)
     cv.waitKey(0)
     cv.destroyAllWindows()
+
     # extrinsics
     image_points_extrinsics = []
     object_points_extrinsics = []
@@ -216,3 +217,25 @@ for camera_i in range(1, 5):
     s.release()
     np.savez(f"data/cam{camera_i}/config", camera_matrix=camera_matrix,
              dist_coeffs=dist_coeffs, rvec_extr=rvec_extr, tvec_extr=tvec_extr, R=R)
+    
+    # project camera 1 and 2 locations using camera 3
+    if camera_i == 3:
+        s = cv.FileStorage(f"data/cam1/config.xml", cv.FileStorage_READ)
+        tvec_extr_1 = s.getNode('tvec_extr').mat()
+        R_1 = s.getNode('R_MAT').mat()
+        s.release()
+        s = cv.FileStorage(f"data/cam2/config.xml", cv.FileStorage_READ)
+        tvec_extr_2 = s.getNode('tvec_extr').mat()
+        R_2 = s.getNode('R_MAT').mat()
+        s.release()
+        camera1 = np.dot(-R_1.T, tvec_extr_1)
+        camera2 = np.dot(-R_2.T, tvec_extr_2)
+        estimated_position_cam1, _ = cv.projectPoints(camera1, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
+        estimated_position_cam2, _ = cv.projectPoints(camera2, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
+        frame = cv.circle(frame, (int(estimated_position_cam1.ravel()[0]), int(estimated_position_cam1.ravel()[1])), 0, (255, 255, 0), 10)
+        frame = cv.circle(frame, (int(estimated_position_cam2.ravel()[0]), int(estimated_position_cam2.ravel()[1])), 0, (255, 255, 0), 10)
+        cv.namedWindow("frame", cv.WINDOW_NORMAL)
+        cv.imshow("frame", frame)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+
