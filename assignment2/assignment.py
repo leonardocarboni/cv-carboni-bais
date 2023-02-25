@@ -132,7 +132,13 @@ def get_cam_rotation_matrices():
 def create_lookup_table():
     "Creates file for the lookup table mapping 3D voxels to 2D image coordinates for each camera"
     
-    voxel_positions = np.array(set_voxel_positions(config['world_width']//2, config['world_height']//2, config['world_depth']//2), dtype = np.float32)
+    voxel_positions = np.array(set_voxel_positions(config['world_width'], config['world_height'], config['world_depth']), dtype = np.float32)
+    voxel_positions = []
+    for x in np.arange(-1500, 1500, 50):
+        for y in np.arange(-1500, 1500, 50):
+            for z in np.arange(-1500, 1500, 50):
+                voxel_positions.append([x, y, z])
+    voxel_positions = np.array(voxel_positions, dtype=np.float32)
     lookup_table = {}
     print(voxel_positions.shape)
     for camera_i in range(1, 5):
@@ -143,12 +149,12 @@ def create_lookup_table():
         rvec_extr = s.getNode('rvec_extr').mat()
         s.release()
         for pos in voxel_positions: # for each 3D point of the voxel cube
-            pos = normalize(pos.reshape(-1,1))[0] *[128, 128, 64]
             temp = pos[1]
             pos[1] = pos[2]
             pos[2] = temp
             imgpoint, _ = cv.projectPoints(pos, rvec_extr, tvec_extr, camera_matrix, dist_coeffs) # project the point in the 2D image plane for this camera
             lookup_table[(int(imgpoint.ravel()[0]), int(imgpoint.ravel()[1]), camera_i)] = (int(pos[0]), int(pos[1]), int(pos[2])) # store voxel
+
     with open(f'data/lookup_table.txt','w+') as f:
         f.write(str(lookup_table))
 
@@ -166,28 +172,34 @@ def voxel_reconstruction():
     # Visible voxels for each camera
     visible_voxels = {}
     for camera_i in range(1, 5): # for each camera
+        cube = []
         with np.load(f'./data/cam{camera_i}/mask.npz') as file:
             mask= file['mask']
         for x, y, i in lookup_table: # for each 2D point  that corresponds to a 3D voxel
             if camera_i == i: # only 2D points for a specific camera plane
-                
-                if mask[x, y] != 0: # if it is foreground TODO: never enters here, the 2D points are all close together
-                    x_voxels, y_voxels, z_voxels = lookup_table[(x, y, camera_i)] # extract corresponding 3D voxel for that camera
-                    visible_voxels[(x_voxels, y_voxels, z_voxels, camera_i-1)] = True # this voxel is foreground for the camera
-    
+                cube.append([x,y])
+                # if mask[x, y] != 0: # if it is foreground TODO: never enters here, the 2D points are all close together
+                #     x_voxels, y_voxels, z_voxels = lookup_table[(x, y, camera_i)] # extract corresponding 3D voxel for that camera
+                #     visible_voxels[(x_voxels, y_voxels, z_voxels, camera_i-1)] = True # this voxel is foreground for the camera
+
+        for point in cube:
+            cv.circle(mask,tuple(point),5,(255,0,0))
+        cv.imshow("cubo", mask)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
     reconstruction = []
-    voxel_positions = np.array(set_voxel_positions(config['world_width']//2, config['world_height']//2, config['world_depth']//2), dtype = np.float32)
+    voxel_positions = np.array(set_voxel_positions(config['world_width'], config['world_height'], config['world_depth']), dtype = np.float32)
     print(visible_voxels)
     for pos in voxel_positions: # for each 3D voxel point of the cube
-        pos = normalize(pos.reshape(-1,1))[0] *[128, 128, 64]
+        pos = pos 
         temp = pos[1]
         pos[1] = pos[2]
         pos[2] = temp
         x, y, z = int(pos[0]), int(pos[1]), int(pos[2])
-        if visible_voxels[(x, y, z, 0)] and visible_voxels[(x, y, z, 1)] and visible_voxels[(x, y, z, 2)] and visible_voxels[(x, y, z, 3)]: # if the 3D point is foreground for all cameras
+        if (x, y, z, 0) in visible_voxels and (x, y, z, 1) in visible_voxels and (x, y, z, 2) in visible_voxels and (x, y, z, 3) in visible_voxels: # if the 3D point is foreground for all cameras
             reconstruction.append([x, y, z])
     return reconstruction
 
 
-create_lookup_table()
+# create_lookup_table()
 print(voxel_reconstruction())
