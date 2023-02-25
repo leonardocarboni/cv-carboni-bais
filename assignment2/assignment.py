@@ -3,6 +3,7 @@ import random
 import numpy as np
 import cv2 as cv
 from sklearn.preprocessing import normalize
+from engine.config import config
 
 block_size = 1.0
 
@@ -125,51 +126,68 @@ def get_cam_rotation_matrices():
 # print(get_cam_positions())
 # print(get_cam_rotation_matrices())
 
-lookup_table = {}
-voxel_positions = np.array(set_voxel_positions(128,64,128), dtype = np.float32)
-
-# for camera_i in range(1, 5):
-#     s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
-#     camera_matrix = s.getNode('camera_matrix').mat()
-#     dist_coeffs = s.getNode('dist_coeffs').mat()
-#     tvec_extr = s.getNode('tvec_extr').mat()
-#     rvec_extr = s.getNode('rvec_extr').mat()
-#     s.release()
-#     for pos in voxel_positions:
-#         imgpoint, _ = cv.projectPoints(pos, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
-#         lookup_table[(int(imgpoint.ravel()[0]), int(imgpoint.ravel()[1]), camera_i)] = (int(pos[0]), int(pos[1]), int(pos[2]))
-
-# with open(f'data/lookup_table.txt','w+') as f:
-#     f.write(str(lookup_table))
-
-# Reading the stored lookup table
-lookup_table = ''
-with open(f'data/lookup_table.txt','r') as f:
-    for i in f.readlines():
-        lookup_table=i #string
-lookup_table = eval(lookup_table)
-
-visible_voxels = np.zeros((128,64,128,4), dtype=bool)
-
-for camera_i in range(1, 5):
-    with np.load(f'./data/cam{camera_i}/mask.npz') as file:
-        mask= file['mask']
-    for x, y, i in lookup_table:
-        if camera_i == i: # 2d imgpoints for camera_i
-            #x_mask, y_mask = int(x), int(y)
-            # print(x_mask, y_mask)
-            # print(mask[x_mask, y_mask])
-            if mask[x, y] != 0:
-                x_voxels, y_voxels, z_voxels = lookup_table[(x, y, camera_i)]
-                visible_voxels[x_voxels, y_voxels, z_voxels, camera_i-1] = True
 
 
-# print(np.sum(visible_voxels[:,:,:, 0]))
-# all_cam_visible = np.zeros((128, 64, 128), dtype = bool)
-reconstruction = []
-for pos in voxel_positions:
-    x, y, z = int(pos[0]), int(pos[1]), int(pos[2])
-    if visible_voxels[x, y, z, 0] and visible_voxels[x, y, z, 1] and visible_voxels[x, y, z, 2] and visible_voxels[x, y, z, 3]:
-        # all_cam_visible[x, y, z] = True
-        reconstruction.append([x, y, z])
-print(reconstruction)
+
+def create_lookup_table():
+    "Creates file for the lookup table mapping 3D voxels to 2D image coordinates for each camera"
+    
+    voxel_positions = np.array(set_voxel_positions(config['world_width']//2, config['world_height']//2, config['world_depth']//2), dtype = np.float32)
+    lookup_table = {}
+    print(voxel_positions.shape)
+    for camera_i in range(1, 5):
+        s = cv.FileStorage(f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
+        camera_matrix = s.getNode('camera_matrix').mat()
+        dist_coeffs = s.getNode('dist_coeffs').mat()
+        tvec_extr = s.getNode('tvec_extr').mat()
+        rvec_extr = s.getNode('rvec_extr').mat()
+        s.release()
+        for pos in voxel_positions: # for each 3D point of the voxel cube
+            pos = normalize(pos.reshape(-1,1))[0] *[128, 128, 64]
+            temp = pos[1]
+            pos[1] = pos[2]
+            pos[2] = temp
+            imgpoint, _ = cv.projectPoints(pos, rvec_extr, tvec_extr, camera_matrix, dist_coeffs) # project the point in the 2D image plane for this camera
+            lookup_table[(int(imgpoint.ravel()[0]), int(imgpoint.ravel()[1]), camera_i)] = (int(pos[0]), int(pos[1]), int(pos[2])) # store voxel
+    with open(f'data/lookup_table.txt','w+') as f:
+        f.write(str(lookup_table))
+
+
+def voxel_reconstruction():
+    " returns voxel reconstruction of the horseman"
+
+    # Reading the stored lookup table
+    lookup_table = ''
+    with open(f'data/lookup_table.txt','r') as f:
+        for i in f.readlines():
+            lookup_table=i #string
+    lookup_table = eval(lookup_table)
+
+    # Visible voxels for each camera
+    visible_voxels = {}
+    for camera_i in range(1, 5): # for each camera
+        with np.load(f'./data/cam{camera_i}/mask.npz') as file:
+            mask= file['mask']
+        for x, y, i in lookup_table: # for each 2D point  that corresponds to a 3D voxel
+            if camera_i == i: # only 2D points for a specific camera plane
+                
+                if mask[x, y] != 0: # if it is foreground TODO: never enters here, the 2D points are all close together
+                    x_voxels, y_voxels, z_voxels = lookup_table[(x, y, camera_i)] # extract corresponding 3D voxel for that camera
+                    visible_voxels[(x_voxels, y_voxels, z_voxels, camera_i-1)] = True # this voxel is foreground for the camera
+    
+    reconstruction = []
+    voxel_positions = np.array(set_voxel_positions(config['world_width']//2, config['world_height']//2, config['world_depth']//2), dtype = np.float32)
+    print(visible_voxels)
+    for pos in voxel_positions: # for each 3D voxel point of the cube
+        pos = normalize(pos.reshape(-1,1))[0] *[128, 128, 64]
+        temp = pos[1]
+        pos[1] = pos[2]
+        pos[2] = temp
+        x, y, z = int(pos[0]), int(pos[1]), int(pos[2])
+        if visible_voxels[(x, y, z, 0)] and visible_voxels[(x, y, z, 1)] and visible_voxels[(x, y, z, 2)] and visible_voxels[(x, y, z, 3)]: # if the 3D point is foreground for all cameras
+            reconstruction.append([x, y, z])
+    return reconstruction
+
+
+create_lookup_table()
+print(voxel_reconstruction())
