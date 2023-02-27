@@ -10,6 +10,13 @@ axis = np.float32([[dim_square * 3, 0, 0], [0, dim_square * 3,
                   0], [0, 0, -dim_square * 3]]).reshape(-1, 3)
 
 
+def show_image(img, name="chessboard"):
+    cv.namedWindow(name, cv.WINDOW_NORMAL)
+    cv.imshow(name, img)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+
 def click_event(event, x, y, flags, params):
     """
     callback function to manually annotate the four outmost corner points
@@ -108,6 +115,128 @@ op = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
 op_3 = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[0])
                  for x in range(CHESSBOARD_VERTICES[1])], dtype=np.float32) * dim_square
 
+auto = input("Use automatic corner detection? [y/n] ")
+
+
+def binarize_chessboard(image):
+    # Convert the image to grayscale
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+
+    # Apply a Gaussian blur to the image to reduce noise
+    blur = cv.GaussianBlur(gray, (5, 5), 0)
+
+    thresh = cv.adaptiveThreshold(
+        blur, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
+    edges = cv.Canny(thresh, 75, 190)
+
+    # Apply an adaptive threshold to the image to binarize it
+
+    # Find the contours of the chessboard edges
+
+    contours, hierarchy = cv.findContours(
+        edges, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+
+    # Select only the chessboard and it(assuming it's the biggest contour)
+    max_area = 0
+    max_contour = None
+
+    for i in range(len(contours)):
+        area = cv.contourArea(contours[i])
+        if area > max_area:
+            max_area = area
+            max_contour = contours[i]
+
+    # Create mask with the contours
+    mask_chessboard = cv.drawContours(np.zeros_like(
+        gray), [max_contour], 0, (255, 255, 255), -1)
+
+    chessboard_binarized = cv.bitwise_and(
+        thresh, thresh, mask=mask_chessboard)
+
+    count, labels, stats, _ = cv.connectedComponentsWithStats(
+        cv.bitwise_not(chessboard_binarized))
+
+    chessboard_squares = np.zeros_like(gray)
+    conto = 0
+    for i in range(1, count):
+        if stats[i, cv.CC_STAT_AREA] < 300 and stats[i, cv.CC_STAT_AREA] > 10:
+            chessboard_squares[labels == i] = 255
+            conto += 1
+
+    chessboard_squares = cv.morphologyEx(
+        chessboard_squares, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (4, 4)))
+
+    return chessboard_squares
+
+
+def find_edges_automatically(image, camera_i):
+    # camera 1: [0, 21, 8, 30]
+    # camera 2: [0, 31, 3, 28]
+    # camera 3: [31, 27, 0, 4]
+    # camera 4: [27, 9, 0, 20]
+    camera_contours_indexes = np.array([[8, 30, 0, 21],
+                                        [3, 28, 0, 31],
+                                        [0, 4, 31, 27],
+                                        [0, 20, 9, 27]])
+    chessboard_binarized = binarize_chessboard(image)
+    # Find contours of the foreground object
+
+    contours, _ = cv.findContours(
+        chessboard_binarized, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_TC89_L1)
+    contours = sorted(contours, key=lambda c: cv.boundingRect(c)[0])
+    contours = np.array(contours, dtype=object)
+    corner_contours = contours[camera_contours_indexes[camera_i - 1]]
+
+    # Corners saved in order: top left, top right, bottom left, bottom right
+    corners_coords = []
+    if camera_i == 1:
+        tl = corner_contours[0].squeeze()
+        corners_coords.append(tuple(tl[np.argmax(tl[:, 1])]))
+        tr = corner_contours[1].squeeze()
+        corners_coords.append(tuple(tr[np.argmin(tr)]))
+        bl = corner_contours[2].squeeze()
+        corners_coords.append(tuple(bl[np.argmax(bl)]))
+        br = corner_contours[3].squeeze()
+        corners_coords.append(tuple(br[np.argmin(br[:, 1])]))
+    elif camera_i == 2:
+        tl = corner_contours[0].squeeze()
+        corners_coords.append(tuple(tl[np.argmax(tl)]))
+        tr = corner_contours[1].squeeze()
+        corners_coords.append(tuple(tr[np.argmin(tr)]))
+        bl = corner_contours[2].squeeze()
+        corners_coords.append(tuple(bl[np.argmax(bl)]))
+        br = corner_contours[3].squeeze()
+        corners_coords.append(tuple(br[np.argmin(br)]))
+    elif camera_i == 3:
+        tl = corner_contours[0].squeeze()
+        corners_coords.append(tuple(tl[np.argmax(tl)]))
+        tr = corner_contours[1].squeeze()
+        corners_coords.append(tuple(tr[np.argmax(tr)]))
+        bl = corner_contours[2].squeeze()
+        corners_coords.append(tuple(bl[np.argmin(bl[:, 0])]))
+        br = corner_contours[3].squeeze()
+        corners_coords.append(tuple(br[np.argmin(br)]))
+    elif camera_i == 4:
+        tl = corner_contours[0].squeeze()
+        corners_coords.append(tuple(tl[np.argmax(tl[0, :])]))
+        tr = corner_contours[1].squeeze()
+        corners_coords.append(tuple(tr[np.argmin(tr)]))
+        bl = corner_contours[2].squeeze()
+        corners_coords.append(tuple(bl[np.argmin(bl[0, :])]))
+        br = corner_contours[3].squeeze()
+        corners_coords.append(tuple(br[np.argmin(br)]))
+
+    print(f"edges coordinates found automatically: f{corners_coords}")
+    djasod(image, corners_coords)
+    return corners_coords
+
+
+def djasod(image, coords):
+    for c in coords:
+        cv.circle(image, c, 1, (0, 255, 0))
+    show_image(image)
+
+
 for camera_i in range(1, 5):
     image_points_intrinsics = []
     object_points_intrinsics = []
@@ -175,12 +304,16 @@ for camera_i in range(1, 5):
                     frame, (6, 8))
             if not retC:
                 edges = []  # list of outmost corners to be annotated
-                print(f"Corners not in image {i} found, Select them manually")
-                cv.namedWindow("insert points", cv.WINDOW_NORMAL)
-                cv.imshow("insert points", frame)
-                cv.setMouseCallback('insert points', click_event)
-                cv.waitKey(0)
-                cv.destroyAllWindows()
+                if auto == "y":
+                    edges = find_edges_automatically(frame, camera_i)
+                else:
+                    print(
+                        f"Corners not in image {i} found, Select them manually")
+                    cv.namedWindow("insert points", cv.WINDOW_NORMAL)
+                    cv.imshow("insert points", frame)
+                    cv.setMouseCallback('insert points', click_event)
+                    cv.waitKey(0)
+                    cv.destroyAllWindows()
                 corners = np.array(interpolate_corners(frame, edges))[
                     :, np.newaxis]
                 frame_copy = frame.copy()
@@ -217,7 +350,7 @@ for camera_i in range(1, 5):
     s.release()
     np.savez(f"data/cam{camera_i}/config", camera_matrix=camera_matrix,
              dist_coeffs=dist_coeffs, rvec_extr=rvec_extr, tvec_extr=tvec_extr, R=R)
-    
+
     # project camera 1 and 2 locations using camera 3
     if camera_i == 3:
         s = cv.FileStorage(f"data/cam1/config.xml", cv.FileStorage_READ)
@@ -230,12 +363,15 @@ for camera_i in range(1, 5):
         s.release()
         camera1 = np.dot(-R_1.T, tvec_extr_1)
         camera2 = np.dot(-R_2.T, tvec_extr_2)
-        estimated_position_cam1, _ = cv.projectPoints(camera1, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
-        estimated_position_cam2, _ = cv.projectPoints(camera2, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
-        frame = cv.circle(frame, (int(estimated_position_cam1.ravel()[0]), int(estimated_position_cam1.ravel()[1])), 0, (255, 255, 0), 10)
-        frame = cv.circle(frame, (int(estimated_position_cam2.ravel()[0]), int(estimated_position_cam2.ravel()[1])), 0, (255, 255, 0), 10)
+        estimated_position_cam1, _ = cv.projectPoints(
+            camera1, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
+        estimated_position_cam2, _ = cv.projectPoints(
+            camera2, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
+        frame = cv.circle(frame, (int(estimated_position_cam1.ravel()[0]), int(
+            estimated_position_cam1.ravel()[1])), 0, (255, 255, 0), 10)
+        frame = cv.circle(frame, (int(estimated_position_cam2.ravel()[0]), int(
+            estimated_position_cam2.ravel()[1])), 0, (255, 255, 0), 10)
         cv.namedWindow("frame", cv.WINDOW_NORMAL)
         cv.imshow("frame", frame)
         cv.waitKey(0)
         cv.destroyAllWindows()
-
