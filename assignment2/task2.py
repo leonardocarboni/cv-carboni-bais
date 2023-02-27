@@ -36,7 +36,8 @@ for camera_i in range(1, 5):
             if retF:
                 #foreground = cv.absdiff(frame, background_pixels)
                 frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
-                mask = np.zeros_like(frame.shape[:2], dtype = np.int8)
+                w, h, _ = frame.shape
+                mask = np.zeros((w, h), dtype = np.uint8)
                 background_pixels_hsv = cv.cvtColor(background_pixels, cv.COLOR_BGR2HSV)
                 foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
                 thresh = 30
@@ -47,13 +48,17 @@ for camera_i in range(1, 5):
                 # _, mask = cv.threshold(foreground_gray,thresh,255,cv.THRESH_BINARY)
                 for x in range(foreground_hsv.shape[0]):
                     for y in range(foreground_hsv.shape[1]):
-                        if  foreground_hsv[x, y, 0] > 200 and foreground_hsv[x, y, 1] > 20 and foreground_hsv[x, y, 2] > 30:
+                        if  foreground_hsv[x, y, 0] >= 5 and foreground_hsv[x, y, 1] >= 0 and foreground_hsv[x, y, 2] >= 0:
                             mask[x, y] = 255
-                # foreground = cv.cvtColor(foreground_hsv, cv.COLOR_GRAY2BGR)
+                # # foreground = cv.cvtColor(foreground_hsv, cv.COLOR_GRAY2BGR)
+                
                 # mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
-                # mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (25, 25)))
+                # mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
                 # #mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10)))
-                cv.imshow('mask', mask)
+                contours, hierarchy = cv.findContours(image=mask, mode=cv.RETR_TREE, method=cv.CHAIN_APPROX_NONE)
+                frame_copy = frame.copy()
+                cv.drawContours(image=frame_copy, contours=contours, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv.LINE_AA)
+                cv.imshow('contours', frame_copy)
                 cv.waitKey(0)
                 cv.destroyAllWindows()
                 output = cv.bitwise_and(frame, frame, mask=mask)
