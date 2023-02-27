@@ -1,7 +1,7 @@
 import numpy as np
 import cv2 as cv
 
-background_frames = 20
+num_frames = 20
 
 background_pixels = np.zeros((486, 644, 3), dtype=np.float32)
 
@@ -11,7 +11,7 @@ for camera_i in range(1, 5):
         camera_matrix, dist_coeffs, rvec_extr, tvec_extr, R = [file[i] for i in [
             'camera_matrix', 'dist_coeffs', 'rvec_extr', 'tvec_extr', 'R']]
         cap = cv.VideoCapture(f"./data/cam{camera_i}/background.avi")
-        for n_frame in range(background_frames):
+        for n_frame in range(num_frames):
             retF, frame = cap.read()
             if retF:
                 height, width, channels = frame.shape
@@ -21,7 +21,7 @@ for camera_i in range(1, 5):
 
         cap.release()
 
-        background_pixels = np.array(background_pixels / background_frames, dtype=np.uint8)
+        background_pixels = np.array(background_pixels / num_frames, dtype=np.uint8)
 
         cap = cv.VideoCapture(f"./data/cam{camera_i}/video.avi")
         #backSub = cv.bgsegm.createBackgroundSubtractorMOG()
@@ -31,22 +31,32 @@ for camera_i in range(1, 5):
         # cv.imshow('mask1', background_pixels)
         # cv.waitKey(0)
         # cv.destroyAllWindows()
-        for n_frame in range(background_frames):
+        for n_frame in range(num_frames):
             retF, frame = cap.read()
             if retF:
                 #foreground = cv.absdiff(frame, background_pixels)
-                frame_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-                background_pixels_gray = cv.cvtColor(background_pixels, cv.COLOR_BGR2GRAY)
-                foreground_gray = cv.absdiff(frame_gray, background_pixels_gray)
+                frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+                mask = np.zeros_like(frame.shape[:2], dtype = np.int8)
+                background_pixels_hsv = cv.cvtColor(background_pixels, cv.COLOR_BGR2HSV)
+                foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
                 thresh = 30
-                cv.imshow('foreground_gray', foreground_gray)
+                # cv.imshow('foreground_gray', foreground_hsv)
+                # cv.waitKey(0)
+                # cv.destroyAllWindows()
                 #foreground_hsv = cv.inRange(foreground_hsv, (0, 0, thresh), (180, 100, 100))
-                _, mask = cv.threshold(foreground_gray,thresh,255,cv.THRESH_BINARY)
-                foreground = cv.cvtColor(foreground_gray, cv.COLOR_GRAY2BGR)
-                mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
-                mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (25, 25)))
-                #mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10)))
-                output = cv.bitwise_and(frame, frame, None, mask)
+                # _, mask = cv.threshold(foreground_gray,thresh,255,cv.THRESH_BINARY)
+                for x in range(foreground_hsv.shape[0]):
+                    for y in range(foreground_hsv.shape[1]):
+                        if  foreground_hsv[x, y, 0] > 200 and foreground_hsv[x, y, 1] > 20 and foreground_hsv[x, y, 2] > 30:
+                            mask[x, y] = 255
+                # foreground = cv.cvtColor(foreground_hsv, cv.COLOR_GRAY2BGR)
+                # mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
+                # mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (25, 25)))
+                # #mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10)))
+                cv.imshow('mask', mask)
+                cv.waitKey(0)
+                cv.destroyAllWindows()
+                output = cv.bitwise_and(frame, frame, mask=mask)
                 cv.imshow('mask', mask)
                 cv.waitKey(0)
                 cv.destroyAllWindows()
