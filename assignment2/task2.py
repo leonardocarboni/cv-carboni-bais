@@ -5,6 +5,28 @@ num_frames = 20
 
 background_pixels = np.zeros((486, 644, 3), dtype=np.float32)
 
+# known values for best threshold after search, just to make execution go faster
+best_masks = {'1': (2, 0, 15), '2': (10, 0, 30), '3': (4, 0, 30), '4': (1, 0, 25)}
+
+def find_best_mask(ground_truth, foreground_hsv):
+    best_differences = ground_truth.shape[0] * ground_truth.shape[1]
+    best_mask = np.zeros((w, h), dtype = np.uint8)
+    for hue in range(0,11):
+        for saturation in range(0, 6, 5):
+            for value in range(0, 31, 5):
+                mask = np.zeros((w, h), dtype = np.uint8)
+                for x in range(foreground_hsv.shape[0]):
+                    for y in range(foreground_hsv.shape[1]):
+                        if  foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
+                            mask[x, y] = 255
+                differences = np.sum(cv.bitwise_xor(ground_truth, mask)) / 255
+                if differences < best_differences:
+                    print(hue, saturation, value)
+                    best_mask = mask
+                    best_differences = differences
+    print(best_differences)
+    return best_mask
+
 for camera_i in range(1, 5):
     background_pixels = np.zeros((486, 644, 3), dtype=np.float32)
     with np.load(f'./data/cam{camera_i}/config.npz') as file:
@@ -31,44 +53,42 @@ for camera_i in range(1, 5):
         # cv.imshow('mask1', background_pixels)
         # cv.waitKey(0)
         # cv.destroyAllWindows()
+        ground_truth = cv.imread(f"./data/cam{camera_i}/ground_truth.jpg", cv.IMREAD_GRAYSCALE)
         for n_frame in range(num_frames):
             retF, frame = cap.read()
             if retF:
-                #foreground = cv.absdiff(frame, background_pixels)
                 frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
                 w, h, _ = frame.shape
-                mask = np.zeros((w, h), dtype = np.uint8)
                 background_pixels_hsv = cv.cvtColor(background_pixels, cv.COLOR_BGR2HSV)
                 foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
-                thresh = 30
-                # cv.imshow('foreground_gray', foreground_hsv)
-                # cv.waitKey(0)
-                # cv.destroyAllWindows()
-                #foreground_hsv = cv.inRange(foreground_hsv, (0, 0, thresh), (180, 100, 100))
-                # _, mask = cv.threshold(foreground_gray,thresh,255,cv.THRESH_BINARY)
+                
+                # call to perform search TODO: uncomment
+                # best_mask = find_best_mask(ground_truth, foreground_hsv)
+                
+                # call to use known value, uncomment to go faster
+                best_mask = np.zeros((w, h), dtype = np.uint8)
+                hue, saturation, value = best_masks[str(camera_i)]
                 for x in range(foreground_hsv.shape[0]):
                     for y in range(foreground_hsv.shape[1]):
-                        if  foreground_hsv[x, y, 0] >= 5 and foreground_hsv[x, y, 1] >= 0 and foreground_hsv[x, y, 2] >= 0:
-                            mask[x, y] = 255
-                # # foreground = cv.cvtColor(foreground_hsv, cv.COLOR_GRAY2BGR)
+                        if  foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
+                            best_mask[x, y] = 255
                 
-                # mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
-                # mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
-                # #mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10)))
-                contours, hierarchy = cv.findContours(image=mask, mode=cv.RETR_TREE, method=cv.CHAIN_APPROX_NONE)
-                frame_copy = frame.copy()
-                cv.drawContours(image=frame_copy, contours=contours, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv.LINE_AA)
-                cv.imshow('contours', frame_copy)
+
+                cv.imshow('contours', best_mask)
                 cv.waitKey(0)
                 cv.destroyAllWindows()
-                output = cv.bitwise_and(frame, frame, mask=mask)
-                cv.imshow('mask', mask)
+                best_mask = cv.morphologyEx(best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (2, 2)))
+                best_mask = cv.morphologyEx(best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (15, 15)))
+                #mask = cv.morphologyEx(mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10)))
+
+                output = cv.bitwise_and(frame, frame, mask=best_mask)
+                cv.imshow('mask', best_mask)
                 cv.waitKey(0)
                 cv.destroyAllWindows()
                 cv.imshow('output', output)
                 cv.waitKey(0)
                 cv.destroyAllWindows()
-                np.savez(f"data/cam{camera_i}/mask", mask=mask)
+                np.savez(f"data/cam{camera_i}/mask", mask=best_mask)
                 break
                 # #_ = backSub.apply(background_pixels)
                 # _ = backSub2.apply(background_pixels)

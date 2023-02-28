@@ -132,9 +132,9 @@ def voxel_reconstruction():
         for x, y, i in lookup_table:  # for each 2D point  that corresponds to a 3D voxel
             if camera_i == i:  # only 2D points for a specific camera plane
                 cube.append([x, y])
-                # if mask[x, y] != 0: # if it is foreground TODO: never enters here, the 2D points are all close together
-                #     x_voxels, y_voxels, z_voxels = lookup_table[(x, y, camera_i)] # extract corresponding 3D voxel for that camera
-                #     visible_voxels[(x_voxels, y_voxels, z_voxels, camera_i-1)] = True # this voxel is foreground for the camera
+                if mask[x, y] != 0: # if it is foreground TODO: never enters here for camera 1
+                    x_voxels, y_voxels, z_voxels = lookup_table[(x, y, camera_i)] # extract corresponding 3D voxel for that camera
+                    visible_voxels[(x_voxels, y_voxels, z_voxels, camera_i-1)] = True # this voxel is foreground for the camera
 
         mask2 = cv.cvtColor(mask, cv.COLOR_GRAY2BGR)
         for point in cube:
@@ -147,10 +147,10 @@ def voxel_reconstruction():
         config['world_width'], config['world_height'], config['world_depth']), dtype=np.float32)
     print(visible_voxels)
     for pos in voxel_positions:  # for each 3D voxel point of the cube
-        pos = pos / 115
-        temp = pos[1]
-        pos[1] = pos[2]
-        pos[2] = temp
+        # pos = pos / 115
+        # temp = pos[1]
+        # pos[1] = pos[2]
+        # pos[2] = temp
         x, y, z = int(pos[0]), int(pos[1]), int(pos[2])
         # if the 3D point is foreground for all cameras
         if (x, y, z, 0) in visible_voxels and (x, y, z, 1) in visible_voxels and (x, y, z, 2) in visible_voxels and (x, y, z, 3) in visible_voxels:
