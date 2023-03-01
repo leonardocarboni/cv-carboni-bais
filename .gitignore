@@ -2,6 +2,7 @@
 
 /assignment2/data/*/*.avi
 
+/assignment2/data/lookup_table.npz
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -4,6 +4,7 @@ import numpy as np
 import cv2 as cv
 from sklearn.preprocessing import normalize
 from engine.config import config
+from time import time as millis
 
 block_size = 1
 block_size2 = 115
@@ -21,10 +22,12 @@ def generate_grid(width, depth):
 
 
 def set_voxel_positions(width, height, depth):
+    start = millis()
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     # Reading the stored lookup table
     voxel_positions, lookup_table = create_lookup_table()
+    print(millis()-start)
     print(voxel_positions.shape)
     # lookup_table = ''
     # with open(f'data/lookup_table.txt', 'r') as f:
@@ -44,24 +47,26 @@ def set_voxel_positions(width, height, depth):
     with np.load('./data/cam4/mask.npz') as file:
         mask4 =file['mask']
     
-    lookup_table[0]
-    for i, x_voxels, y_voxels, z_voxels, x, y in lookup_table:  # for each 2D point  that corresponds to a 3D voxel
-        i = int(i)
-        x = int(x)
-        y = int(y)
+
+    for vox in range(voxel_positions.shape[0]):
         flag = True
-          # to show cube in front of mask
-        if i == 0 and mask1[y, x] == 0:
-            flag = False
-        if i == 1 and mask2[y, x] == 0:
-            flag = False
-        if i == 2 and mask3[y, x] == 0:
-            flag = False
-        if i == 3 and mask4[y, x] == 0:
-            flag = False
+        for i in range(4):
+            x_voxels, y_voxels, z_voxels, x, y = lookup_table[vox, :, i]
+            x = int(x)
+            y = int(y)
+            # to show cube in front of mask
+            if i == 0 and mask1[y, x] == 0:
+                flag = False
+            if i == 1 and mask2[y, x] == 0:
+                flag = False
+            if i == 2 and mask3[y, x] == 0:
+                flag = False
+            if i == 3 and mask4[y, x] == 0:
+                flag = False
         if flag:
             visible_voxels.append([x_voxels/115, -z_voxels/115, y_voxels/115])
-    visible_voxels
+    print(millis()-start)
+    # visible_voxels
 
     # mask2 = cv.cvtColor(mask, cv.COLOR_GRAY2BGR) 
     # for x, y in lookup_table.values():
@@ -133,9 +138,9 @@ def get_cam_rotation_matrices():
 def create_cube():
     w, h, d = 750, 1500, 1500  # 7 chessboard squares (cols)
     cube = []
-    for x in np.arange(0, w, 50):
-        for y in np.arange(-d//2, d//2, 50):
-            for z in np.arange(-h, h, 10):
+    for x in np.arange(0, w, 7):
+        for y in np.arange(-d//2, d//2, 15):
+            for z in np.arange(-h, h, 15):
                     # negative because TODO: find out why
                 cube.append([x, y, z])
     return cube
@@ -145,7 +150,7 @@ def create_lookup_table():
     "Creates file for the lookup table mapping 3D voxels to 2D image coordinates for each camera"
 
     voxel_positions = np.array(create_cube(), dtype=np.float32)
-    lookup_table = np.zeros((voxel_positions.shape[0], 6))
+    lookup_table = np.zeros((voxel_positions.shape[0], 5, 4))
     for camera_i in range(1, 5):
         s = cv.FileStorage(
             f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
@@ -162,7 +167,7 @@ def create_lookup_table():
             x = imgpoint[0]
             y = imgpoint[1]
             if x >= 0 and x <= 644 and y >= 0 and y < 486:
-                lookup_table[i, :] = [camera_i-1, int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]  # store voxel (glm)
+                lookup_table[i, :, camera_i-1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]  # store voxel (glm)
 
     np.savez('data/lookup_table', lookup_table = lookup_table)
     # with open(f'data/lookup_table.txt', 'w+') as f:
