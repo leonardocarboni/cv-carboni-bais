@@ -35,28 +35,33 @@ def set_voxel_positions(width, height, depth):
     # Visible voxels for each camera
     visible_voxels = []
       # for each camera
+    with np.load('./data/cam1/mask.npz') as file:
+        mask1 =file['mask']
+    with np.load('./data/cam2/mask.npz') as file:
+        mask2 =file['mask']
+    with np.load('./data/cam3/mask.npz') as file:
+        mask3 =file['mask']
+    with np.load('./data/cam4/mask.npz') as file:
+        mask4 =file['mask']
     
-    
-    for x_voxels, y_voxels, z_voxels in voxel_positions:  # for each 2D point  that corresponds to a 3D voxel
-        cube = []
-          # to show cube in front of mask
+    lookup_table[0]
+    for i, x_voxels, y_voxels, z_voxels, x, y in lookup_table:  # for each 2D point  that corresponds to a 3D voxel
+        i = int(i)
+        x = int(x)
+        y = int(y)
         flag = True
-        for camera_i in range(1, 5):
-            
-            with np.load(f'./data/cam{camera_i}/mask.npz') as file:
-                mask = file['mask']
-              # only 2D points for a specific camera plane
-            if (x_voxels, y_voxels, z_voxels, camera_i) in lookup_table:
-                x, y = lookup_table[(x_voxels, y_voxels, z_voxels, camera_i)]
-                cube.append((x, y))
-                # if it is foreground TODO: never enters here, the 2D points are all close together
-                if mask[y, x] == 0:
-                    flag = False
-                    # extract corresponding 3D voxel for that camera
-                    # this voxel is foreground for the camera (x, y, z form)
-            
+          # to show cube in front of mask
+        if i == 0 and mask1[y, x] == 0:
+            flag = False
+        if i == 1 and mask2[y, x] == 0:
+            flag = False
+        if i == 2 and mask3[y, x] == 0:
+            flag = False
+        if i == 3 and mask4[y, x] == 0:
+            flag = False
         if flag:
             visible_voxels.append([x_voxels/115, -z_voxels/115, y_voxels/115])
+    visible_voxels
 
     # mask2 = cv.cvtColor(mask, cv.COLOR_GRAY2BGR) 
     # for x, y in lookup_table.values():
@@ -128,9 +133,9 @@ def get_cam_rotation_matrices():
 def create_cube():
     w, h, d = 750, 1500, 1500  # 7 chessboard squares (cols)
     cube = []
-    for x in np.arange(0, w+1, 50):
-        for y in np.arange(-d//2, d//2+1, 50):
-            for z in np.arange(-h, h+1, 10):
+    for x in np.arange(0, w, 50):
+        for y in np.arange(-d//2, d//2, 50):
+            for z in np.arange(-h, h, 10):
                     # negative because TODO: find out why
                 cube.append([x, y, z])
     return cube
@@ -140,7 +145,7 @@ def create_lookup_table():
     "Creates file for the lookup table mapping 3D voxels to 2D image coordinates for each camera"
 
     voxel_positions = np.array(create_cube(), dtype=np.float32)
-    lookup_table = {}
+    lookup_table = np.zeros((voxel_positions.shape[0], 6))
     for camera_i in range(1, 5):
         s = cv.FileStorage(
             f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
@@ -149,7 +154,7 @@ def create_lookup_table():
         tvec_extr = s.getNode('tvec_extr').mat()
         rvec_extr = s.getNode('rvec_extr').mat()
         s.release()
-        for pos in voxel_positions:  # for each 3D point of the voxel cube
+        for i, pos in enumerate(voxel_positions):  # for each 3D point of the voxel cube
             # project the point in the 2D image plane for this camera
             imgpoint, _ = cv.projectPoints(
                 pos, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
@@ -157,8 +162,9 @@ def create_lookup_table():
             x = imgpoint[0]
             y = imgpoint[1]
             if x >= 0 and x <= 644 and y >= 0 and y < 486:
-                lookup_table[(int(pos[0]), int(pos[1]), int(pos[2]), camera_i)] = (int(x), int(y))  # store voxel (glm)
+                lookup_table[i, :] = [camera_i-1, int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]  # store voxel (glm)
 
+    np.savez('data/lookup_table', lookup_table = lookup_table)
     # with open(f'data/lookup_table.txt', 'w+') as f:
     #     f.write(str(lookup_table))
     return voxel_positions, lookup_table
