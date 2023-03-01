@@ -6,7 +6,7 @@ from sklearn.preprocessing import normalize
 from engine.config import config
 
 block_size = 1
-block_size2 = 100
+block_size2 = 115
 
 
 def generate_grid(width, depth):
@@ -24,45 +24,57 @@ def set_voxel_positions(width, height, depth):
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     # Reading the stored lookup table
-    lookup_table = ''
-    with open(f'data/lookup_table.txt', 'r') as f:
-        for i in f.readlines():
-            lookup_table = i  # string
-    lookup_table = eval(lookup_table)
+    voxel_positions, lookup_table = create_lookup_table()
+    print(voxel_positions.shape)
+    # lookup_table = ''
+    # with open(f'data/lookup_table.txt', 'r') as f:
+    #     for i in f.readlines():
+    #         lookup_table = i  # string
+    # lookup_table = eval(lookup_table)
 
     # Visible voxels for each camera
     visible_voxels = []
-    for camera_i in range(1, 5):  # for each camera
+      # for each camera
+    
+    
+    for x_voxels, y_voxels, z_voxels in voxel_positions:  # for each 2D point  that corresponds to a 3D voxel
         cube = []
-        with np.load(f'./data/cam{camera_i}/mask.npz') as file:
-            mask = file['mask']
-        for x, y, i in lookup_table:  # for each 2D point  that corresponds to a 3D voxel
-            if camera_i == i:  # only 2D points for a specific camera plane
-                x_voxels, y_voxels, z_voxels = lookup_table[(x, y, camera_i)]
-                cube.append((x, y))  # to show cube in front of mask
+          # to show cube in front of mask
+        flag = True
+        for camera_i in range(1, 5):
+            
+            with np.load(f'./data/cam{camera_i}/mask.npz') as file:
+                mask = file['mask']
+              # only 2D points for a specific camera plane
+            if (x_voxels, y_voxels, z_voxels, camera_i) in lookup_table:
+                x, y = lookup_table[(x_voxels, y_voxels, z_voxels, camera_i)]
+                cube.append((x, y))
                 # if it is foreground TODO: never enters here, the 2D points are all close together
-                if mask[y, x] != 0:
+                if mask[y, x] == 0:
+                    flag = False
                     # extract corresponding 3D voxel for that camera
                     # this voxel is foreground for the camera (x, y, z form)
-                    visible_voxels.append(
-                        (x_voxels, y_voxels, z_voxels, camera_i-1))
+            
+        if flag:
+            visible_voxels.append([x_voxels/115, -z_voxels/115, y_voxels/115])
 
-        # mask2 = cv.cvtColor(mask, cv.COLOR_GRAY2BGR)
-        # for x, y, i in lookup_table:
-        #     if mask[y, x] == 255 and i == camera_i:
-        #         cv.circle(mask2, (x, y), 5, (255, 0, 0), -1)
-        # cv.imshow("cubo", mask2)
-        # cv.waitKey(0)
-        # cv.destroyAllWindows()
-
-    reconstruction = []
-    voxel_positions = create_cube()  # x, y, z
-    for pos in voxel_positions:  # for each 3D voxel point of the cube
-        x, y, z = int(pos[0]), int(pos[1]), int(pos[2])
-        # if the 3D point is foreground for all cameras
-        if (x, y, z, 0) in visible_voxels and (x, y, z, 1) in visible_voxels and (x, y, z, 2) in visible_voxels and (x, y, z, 3) in visible_voxels:
-            reconstruction.append([x//100, -z//100, y//100])
-    return reconstruction
+    # mask2 = cv.cvtColor(mask, cv.COLOR_GRAY2BGR) 
+    # for x, y in lookup_table.values():
+    #     for camera_i in range(1, 5):
+    #             cv.circle(mask2, (x, y), 5, (255, 0, 0), -1)
+    # cv.imshow("cubo", mask2)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
+    # reconstruction = []
+    # # voxel_positions = create_cube()  # x, y, z
+    # for pos in voxel_positions:  # for each 3D voxel point of the cube
+    #     x, y, z = int(pos[0]), int(pos[1]), int(pos[2])
+    #     # if the 3D point is foreground for all cameras
+    #     if (x, y, z) in visible_voxels[0] and (x, y, z) in visible_voxels[1] and (x, y, z) in visible_voxels[2] and (x, y, z) in visible_voxels[3]:
+            
+            
+    #         reconstruction.append([x/115, -z/115, y/115])
+    return visible_voxels
 
 
 def get_cam_positions():
@@ -114,14 +126,13 @@ def get_cam_rotation_matrices():
 
 
 def create_cube():
-    w, h, d = 7, 14, 14  # 7 chessboard squares (cols)
+    w, h, d = 750, 1500, 1500  # 7 chessboard squares (cols)
     cube = []
-    for x in range(w):
-        for y in range(-d//2, d//2):
-            for z in range(h):
-                for size in range(block_size2//5, block_size2+1, block_size2//10):
+    for x in np.arange(0, w+1, 50):
+        for y in np.arange(-d//2, d//2+1, 50):
+            for z in np.arange(-h, h+1, 10):
                     # negative because TODO: find out why
-                    cube.append([x * size, y * size, z * -size])
+                cube.append([x, y, z])
     return cube
 
 
@@ -146,11 +157,11 @@ def create_lookup_table():
             x = imgpoint[0]
             y = imgpoint[1]
             if x >= 0 and x <= 644 and y >= 0 and y < 486:
-                lookup_table[(int(x), int(y), camera_i)] = (
-                    int(pos[0]), int(pos[1]), int(pos[2]))  # store voxel (glm)
+                lookup_table[(int(pos[0]), int(pos[1]), int(pos[2]), camera_i)] = (int(x), int(y))  # store voxel (glm)
 
-    with open(f'data/lookup_table.txt', 'w+') as f:
-        f.write(str(lookup_table))
-
+    # with open(f'data/lookup_table.txt', 'w+') as f:
+    #     f.write(str(lookup_table))
+    return voxel_positions, lookup_table
 
 # create_lookup_table()
+# print(set_voxel_positions(1,2,3))
