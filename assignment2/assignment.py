@@ -50,7 +50,10 @@ def set_voxel_positions(width, height, depth):
 
     # Visible voxels for each camera
       # for each camera
-    
+    if n_frame == 50:
+        n_frame = 0
+        visible_voxels = []
+        return visible_voxels
     
     if n_frame == 0:
 
@@ -91,9 +94,9 @@ def set_voxel_positions(width, height, depth):
                 
         #         reconstruction.append([x/115, -z/115, y/115])
         n_frame += 1
-        print(visible_voxels)
         return visible_voxels
     else:
+        ciccio = {}
         current_mask1 = np.array(mask1[n_frame], dtype = np.int8)
         last_mask1 = np.array(mask1[n_frame-1], dtype = np.int8)
         current_mask2 = np.array(mask2[n_frame], dtype = np.int8)
@@ -105,30 +108,99 @@ def set_voxel_positions(width, height, depth):
         differences_1 = current_mask1 - last_mask1
         xs, ys = np.where(differences_1 == -1)
         coords = np.stack((xs, ys), axis = 1)
-        print(len(visible_voxels))
-        print(coords)
         look_cam1 = lookup_table[:, :, 0]
-        for x, y in coords:
+        for coord in coords:
+            x, y = coord[0], coord[1]
             remove_pos1 = look_cam1[(look_cam1[:, 3] == x) & (look_cam1[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
             for vox in remove_pos1:
-                print("ciaooo", vox.shape)
-                suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
-                print(suka)
-                visible_voxels.remove(suka) 
-        
-        add_pos1 = np.where(visible_voxels[differences_1 == 255])
+                        suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
+                        if suka in visible_voxels:
+                            visible_voxels.remove(suka) 
+
+        xs, ys = np.where(differences_1 == 1)
+        coords = np.stack((xs, ys), axis = 1)
+        for coord in coords:
+            x, y = coord[0], coord[1]
+            add_pos1 = look_cam1[(look_cam1[:, 3] == x) & (look_cam1[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
+            for vox in add_pos1:
+                        if (vox[0]/75, -vox[2]/75, vox[1]/75) in ciccio:
+                            ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
+                        else:
+                             ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
+
         differences_2 = current_mask2 - last_mask2
-        remove_pos2 = np.where(visible_voxels[differences_2 == -255])
-        add_pos2 = np.where(visible_voxels[differences_2 == 255])
+        xs, ys = np.where(differences_2 == -1)
+        coords = np.stack((xs, ys), axis = 1)
+        look_cam2 = lookup_table[:, :, 1]
+        for coord in coords:
+            x, y = coord[0], coord[1]
+            remove_pos2 = look_cam2[(look_cam2[:, 3] == x) & (look_cam2[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
+            for vox in remove_pos2:
+                        suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
+                        if suka in visible_voxels:
+                            visible_voxels.remove(suka)
+
+        xs, ys = np.where(differences_2 == 1)
+        coords = np.stack((xs, ys), axis = 1)
+        for coord in coords:
+            x, y = coord[0], coord[1]
+            add_pos2 = look_cam2[(look_cam2[:, 3] == x) & (look_cam2[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
+            for vox in add_pos2:
+                        if (vox[0]/75, -vox[2]/75, vox[1]/75) in ciccio:
+                            ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
+                        else:
+                             ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
+
         differences_3 = current_mask3 - last_mask3
-        remove_pos3 = np.where(visible_voxels[differences_3 == -255])
-        add_pos3 = np.where(visible_voxels[differences_3 == 255])
+        xs, ys = np.where(differences_3 == -1)
+        coords = np.stack((xs, ys), axis = 1)
+        look_cam3 = lookup_table[:, :, 2]
+        for coord in coords:
+            x, y = coord[0], coord[1]
+            remove_pos3 = look_cam3[(look_cam1[:, 3] == x) & (look_cam3[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
+            for vox in remove_pos3:
+                        suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
+                        if suka in visible_voxels:
+                            visible_voxels.remove(suka)
+
+        xs, ys = np.where(differences_3 == 1)
+        coords = np.stack((xs, ys), axis = 1)
+        for coord in coords:
+            x, y = coord[0], coord[1]
+            add_pos3 = look_cam3[(look_cam3[:, 3] == x) & (look_cam3[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
+            for vox in add_pos3:
+                        if (vox[0]/75, -vox[2]/75, vox[1]/75) in ciccio:
+                            ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
+                        else:
+                             ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
+
         differences_4 = current_mask4 - last_mask4
-        remove_pos4 = np.where(visible_voxels[differences_4 == -255])
-        add_pos4 = np.where(visible_voxels[differences_4 == 255])
-        print(remove_pos1)
-        # visible_voxels.remove(visible_voxels[]
-        # visible_voxels.append(np.where(visible_voxels[differences_1 == 255 and differences_2 == 255 and differences_3 == 255 and differences_4 == 255]))
+        xs, ys = np.where(differences_4 == -1)
+        coords = np.stack((xs, ys), axis = 1)
+        look_cam4 = lookup_table[:, :, 3]
+        for coord in coords:
+            x, y = coord[0], coord[1]
+            remove_pos4 = look_cam4[(look_cam4[:, 3] == x) & (look_cam4[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
+            for vox in remove_pos4:
+                        suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
+                        if suka in visible_voxels:
+                            visible_voxels.remove(suka)
+
+        xs, ys = np.where(differences_4 == 1)
+        coords = np.stack((xs, ys), axis = 1)
+        for coord in coords:
+            x, y = coord[0], coord[1]
+            add_pos4 = look_cam4[(look_cam4[:, 3] == x) & (look_cam4[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
+            for vox in add_pos4:
+                        if (vox[0]/75, -vox[2]/75, vox[1]/75) in ciccio:
+                            ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
+                        else:
+                             ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
+        for vox in ciccio:
+            if ciccio[vox] == 4:
+                 visible_voxels.append(vox)
+        print(len(visible_voxels))
+        n_frame += 1
         return visible_voxels
 def get_cam_positions():
     # Generates dummy camera locations at the 4 corners of the room
