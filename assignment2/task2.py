@@ -56,6 +56,7 @@ for camera_i in range(1, 5):
 
         ground_truth = cv.imread(
             f"./data/cam{camera_i}/ground_truth.jpg", cv.IMREAD_GRAYSCALE)
+        all_masks = []
         for n_frame in range(num_frames):
             retF, frame = cap.read()
             if retF:
@@ -77,9 +78,9 @@ for camera_i in range(1, 5):
                             if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
                                 best_mask[x, y] = 255
 
-                cv.imshow('contours', best_mask)
-                cv.waitKey(0)
-                cv.destroyAllWindows()
+                # cv.imshow('contours', best_mask)
+                # cv.waitKey(0)
+                # cv.destroyAllWindows()
                 best_mask = cv.morphologyEx(
                     best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (2, 2)))
                 best_mask = cv.morphologyEx(
@@ -92,12 +93,13 @@ for camera_i in range(1, 5):
                 final_mask = np.zeros((w, h), dtype=np.uint8)
                 final_mask[labels == biggest_component] = 255
 
-                cv.imshow('final mask', final_mask)
-                cv.waitKey(0)
-                cv.destroyAllWindows()
+                # cv.imshow('final mask', final_mask)
+                # cv.waitKey(0)
+                # cv.destroyAllWindows()
                 output = cv.bitwise_and(frame, frame, mask=final_mask)
-                cv.imshow('output', output)
-                cv.waitKey(0)
-                cv.destroyAllWindows()
-                np.savez(f"data/cam{camera_i}/mask", mask=final_mask)
-                break
+                # cv.imshow('output', output)
+                # cv.waitKey(0)
+                # cv.destroyAllWindows()
+                all_masks.append(final_mask)
+        np.savez(f"data/cam{camera_i}/masks", masks=all_masks)
+                
