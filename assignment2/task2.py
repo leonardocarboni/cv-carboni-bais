@@ -1,7 +1,7 @@
 import numpy as np
 import cv2 as cv
 
-num_frames = 200
+num_frames = 50
 
 background_pixels = np.zeros((486, 644, 3), dtype=np.float32)
 
@@ -41,12 +41,11 @@ for camera_i in range(1, 5):
         cap = cv.VideoCapture(f"./data/cam{camera_i}/background.avi")
         for n_frame in range(num_frames):
             retF, frame = cap.read()
-            if n_frame % 10 == 0:
-                if retF:
-                    height, width, channels = frame.shape
-                    for y in range(0, height):
-                        for x in range(0, width):
-                            background_pixels[y, x] += frame[y, x]
+            if retF:
+                height, width, channels = frame.shape
+                for y in range(0, height):
+                    for x in range(0, width):
+                        background_pixels[y, x] += frame[y, x]
 
         cap.release()
 
@@ -60,48 +59,47 @@ for camera_i in range(1, 5):
         all_masks = []
         for n_frame in range(num_frames):
             retF, frame = cap.read()
-            if n_frame % 10 == 0:
-                if retF:
-                    frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
-                    w, h, _ = frame.shape
-                    background_pixels_hsv = cv.cvtColor(
-                        background_pixels, cv.COLOR_BGR2HSV)
-                    foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
+            if retF:
+                frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+                w, h, _ = frame.shape
+                background_pixels_hsv = cv.cvtColor(
+                    background_pixels, cv.COLOR_BGR2HSV)
+                foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
 
-                    # call to use known value, uncomment to go faster
-                    best_mask = np.zeros((w, h), dtype=np.uint8)
+                # call to use known value, uncomment to go faster
+                best_mask = np.zeros((w, h), dtype=np.uint8)
 
-                    if find == "y":
-                        best_mask = find_best_mask(ground_truth, foreground_hsv)
-                    else:
-                        hue, saturation, value = best_masks[str(camera_i)]
-                        for x in range(foreground_hsv.shape[0]):
-                            for y in range(foreground_hsv.shape[1]):
-                                if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
-                                    best_mask[x, y] = 255
+                if find == "y":
+                    best_mask = find_best_mask(ground_truth, foreground_hsv)
+                else:
+                    hue, saturation, value = best_masks[str(camera_i)]
+                    for x in range(foreground_hsv.shape[0]):
+                        for y in range(foreground_hsv.shape[1]):
+                            if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
+                                best_mask[x, y] = 255
 
-                    # cv.imshow('contours', best_mask)
-                    # cv.waitKey(0)
-                    # cv.destroyAllWindows()
-                    best_mask = cv.morphologyEx(
-                        best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (2, 2)))
-                    best_mask = cv.morphologyEx(
-                        best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (15, 15)))
+                # cv.imshow('contours', best_mask)
+                # cv.waitKey(0)
+                # cv.destroyAllWindows()
+                best_mask = cv.morphologyEx(
+                    best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (2, 2)))
+                best_mask = cv.morphologyEx(
+                    best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (15, 15)))
 
-                    # leave only biggest connected component in best mask
-                    nlabels, labels, stats, centroids = cv.connectedComponentsWithStats(
-                        best_mask)
-                    biggest_component = np.argmax(stats[1:, cv.CC_STAT_AREA]) + 1
-                    final_mask = np.zeros((w, h), dtype=np.uint8)
-                    final_mask[labels == biggest_component] = 255
+                # leave only biggest connected component in best mask
+                nlabels, labels, stats, centroids = cv.connectedComponentsWithStats(
+                    best_mask)
+                biggest_component = np.argmax(stats[1:, cv.CC_STAT_AREA]) + 1
+                final_mask = np.zeros((w, h), dtype=np.uint8)
+                final_mask[labels == biggest_component] = 255
 
-                    # cv.imshow('final mask', final_mask)
-                    # cv.waitKey(0)
-                    # cv.destroyAllWindows()
-                    output = cv.bitwise_and(frame, frame, mask=final_mask)
-                    # cv.imshow('output', output)
-                    # cv.waitKey(0)
-                    # cv.destroyAllWindows()
-                    all_masks.append(final_mask)
+                # cv.imshow('final mask', final_mask)
+                # cv.waitKey(0)
+                # cv.destroyAllWindows()
+                output = cv.bitwise_and(frame, frame, mask=final_mask)
+                # cv.imshow('output', output)
+                # cv.waitKey(0)
+                # cv.destroyAllWindows()
+                all_masks.append(final_mask)
         np.savez(f"data/cam{camera_i}/masks", masks=all_masks)
                 
