@@ -31,6 +31,7 @@ def generate_grid(width, depth):
 
 def set_voxel_positions(width, height, depth):
     global n_frame
+    global visible_voxels
     start = millis()
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
@@ -90,21 +91,31 @@ def set_voxel_positions(width, height, depth):
                 
         #         reconstruction.append([x/115, -z/115, y/115])
         n_frame += 1
+        print(visible_voxels)
         return visible_voxels
     else:
-        current_mask1 = mask1[n_frame]
-        last_mask1 = mask1[n_frame-1]
-        current_mask2 = mask2[n_frame]
-        last_mask2 = mask2[n_frame-1]
-        current_mask3 = mask3[n_frame]
-        last_mask3 = mask3[n_frame-1]
-        current_mask4 = mask4[n_frame]
-        last_mask4 = mask4[n_frame-1]
+        current_mask1 = np.array(mask1[n_frame], dtype = np.int8)
+        last_mask1 = np.array(mask1[n_frame-1], dtype = np.int8)
+        current_mask2 = np.array(mask2[n_frame], dtype = np.int8)
+        last_mask2 = np.array(mask2[n_frame-1], dtype = np.int8)
+        current_mask3 = np.array(mask3[n_frame], dtype = np.int8)
+        last_mask3 = np.array(mask3[n_frame-1], dtype = np.int8)
+        current_mask4 = np.array(mask4[n_frame], dtype = np.int8)
+        last_mask4 = np.array(mask4[n_frame-1], dtype = np.int8)
         differences_1 = current_mask1 - last_mask1
-        x = 0
-        y = 0
-        remove_pos1 = lookup_table[(lookup_table[:, :, 0][:, 3] == x) & (lookup_table[:, :, 0][:, 4] == y)][]
-        print(remove_pos1)
+        xs, ys = np.where(differences_1 == -1)
+        coords = np.stack((xs, ys), axis = 1)
+        print(len(visible_voxels))
+        print(coords)
+        look_cam1 = lookup_table[:, :, 0]
+        for x, y in coords:
+            remove_pos1 = look_cam1[(look_cam1[:, 3] == x) & (look_cam1[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
+            for vox in remove_pos1:
+                print("ciaooo", vox.shape)
+                suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
+                print(suka)
+                visible_voxels.remove(suka) 
+        
         add_pos1 = np.where(visible_voxels[differences_1 == 255])
         differences_2 = current_mask2 - last_mask2
         remove_pos2 = np.where(visible_voxels[differences_2 == -255])
