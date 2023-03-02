@@ -227,11 +227,11 @@ def find_edges_automatically(image, camera_i):
         corners_coords.append(tuple(br[np.argmin(br)]))
 
     print(f"edges coordinates found automatically: f{corners_coords}")
-    djasod(image, corners_coords)
+    draw_corners(image, corners_coords)
     return corners_coords
 
 
-def djasod(image, coords):
+def draw_corners(image, coords):
     for c in coords:
         cv.circle(image, c, 1, (0, 255, 0))
     show_image(image)

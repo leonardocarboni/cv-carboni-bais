@@ -2,7 +2,7 @@ import glm
 import random
 import numpy as np
 import cv2 as cv
-from time import time as millis
+from time import time
 
 block_size = 1
 block_size2 = 115
@@ -10,13 +10,14 @@ n_frame = 0
 visible_voxels = []
 
 with np.load('./data/cam1/masks.npz') as file:
-        mask1 =file['masks']
+    mask1 = file['masks']
 with np.load('./data/cam2/masks.npz') as file:
-        mask2 =file['masks']
+    mask2 = file['masks']
 with np.load('./data/cam3/masks.npz') as file:
-        mask3 =file['masks']
+    mask3 = file['masks']
 with np.load('./data/cam4/masks.npz') as file:
-        mask4 =file['masks']
+    mask4 = file['masks']
+
 
 def generate_grid(width, depth):
     # Generates the floor grid locations
@@ -32,31 +33,23 @@ def generate_grid(width, depth):
 def set_voxel_positions(width, height, depth):
     global n_frame
     global visible_voxels
-    start = millis()
+    start_lookup = time()
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     # Reading the stored lookup table
     # voxel_positions, lookup_table = create_lookup_table(750, 1500, 1500)
     with np.load(f'./data/lookup_table.npz') as file:
         lookup_table = file['lookup_table']
-    voxel_positions = np.array(create_cube(750, 1500, 1500), dtype = np.float32)
-    print(millis()-start)
-    print(voxel_positions.shape)
-    # lookup_table = ''
-    # with open(f'data/lookup_table.txt', 'r') as f:
-    #     for i in f.readlines():
-    #         lookup_table = i  # string
-    # lookup_table = eval(lookup_table)
-
+    voxel_positions = np.array(create_cube(750, 1500, 1500), dtype=np.float32)
+    print(f"time to load/create lookup table: {time()-start_lookup}")
     # Visible voxels for each camera
-      # for each camera
     if n_frame == 50:
         n_frame = 0
         visible_voxels = []
         return visible_voxels
-    
-    if n_frame == 0:
 
+    if n_frame == 0:
+        start_reconstruction = time()
         for vox in range(voxel_positions.shape[0]):
             flag = True
             for i in range(4):
@@ -74,134 +67,69 @@ def set_voxel_positions(width, height, depth):
                     flag = False
             if flag:
                 visible_voxels.append([x_voxels/75, -z_voxels/75, y_voxels/75])
-        print(millis()-start)
-        # visible_voxels
-
-        # mask2 = cv.cvtColor(mask, cv.COLOR_GRAY2BGR) 
-        # for x, y in lookup_table.values():
-        #     for camera_i in range(1, 5):
-        #             cv.circle(mask2, (x, y), 5, (255, 0, 0), -1)
-        # cv.imshow("cubo", mask2)
-        # cv.waitKey(0)
-        # cv.destroyAllWindows()
-        # reconstruction = []
-        # # voxel_positions = create_cube()  # x, y, z
-        # for pos in voxel_positions:  # for each 3D voxel point of the cube
-        #     x, y, z = int(pos[0]), int(pos[1]), int(pos[2])
-        #     # if the 3D point is foreground for all cameras
-        #     if (x, y, z) in visible_voxels[0] and (x, y, z) in visible_voxels[1] and (x, y, z) in visible_voxels[2] and (x, y, z) in visible_voxels[3]:
-                
-                
-        #         reconstruction.append([x/115, -z/115, y/115])
+        print(f"time to reconstruct all: {time()-start_reconstruction}")
         n_frame += 1
         return visible_voxels
     else:
-        ciccio = {}
-        current_mask1 = np.array(mask1[n_frame], dtype = np.int8)
-        last_mask1 = np.array(mask1[n_frame-1], dtype = np.int8)
-        current_mask2 = np.array(mask2[n_frame], dtype = np.int8)
-        last_mask2 = np.array(mask2[n_frame-1], dtype = np.int8)
-        current_mask3 = np.array(mask3[n_frame], dtype = np.int8)
-        last_mask3 = np.array(mask3[n_frame-1], dtype = np.int8)
-        current_mask4 = np.array(mask4[n_frame], dtype = np.int8)
-        last_mask4 = np.array(mask4[n_frame-1], dtype = np.int8)
-        differences_1 = current_mask1 - last_mask1
-        xs, ys = np.where(differences_1 == -1)
-        coords = np.stack((xs, ys), axis = 1)
-        look_cam1 = lookup_table[:, :, 0]
-        for coord in coords:
-            x, y = coord[0], coord[1]
-            remove_pos1 = look_cam1[(look_cam1[:, 3] == x) & (look_cam1[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
-            for vox in remove_pos1:
-                        suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
-                        if suka in visible_voxels:
-                            visible_voxels.remove(suka) 
+        start_reconstruction_diff = time()
+        changes = {}
+        current_mask1 = np.array(mask1[n_frame], dtype=np.int8)
+        last_mask1 = np.array(mask1[n_frame-1], dtype=np.int8)
+        current_mask2 = np.array(mask2[n_frame], dtype=np.int8)
+        last_mask2 = np.array(mask2[n_frame-1], dtype=np.int8)
+        current_mask3 = np.array(mask3[n_frame], dtype=np.int8)
+        last_mask3 = np.array(mask3[n_frame-1], dtype=np.int8)
+        current_mask4 = np.array(mask4[n_frame], dtype=np.int8)
+        last_mask4 = np.array(mask4[n_frame-1], dtype=np.int8)
 
-        xs, ys = np.where(differences_1 == 1)
-        coords = np.stack((xs, ys), axis = 1)
-        for coord in coords:
-            x, y = coord[0], coord[1]
-            add_pos1 = look_cam1[(look_cam1[:, 3] == x) & (look_cam1[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
-            for vox in add_pos1:
-                        if (vox[0]/75, -vox[2]/75, vox[1]/75) in ciccio:
-                            ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
-                        else:
-                             ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
+        differences = [current_mask1 - last_mask1, current_mask2 -
+                       last_mask2, current_mask3 - last_mask3, current_mask4 - last_mask4]
 
-        differences_2 = current_mask2 - last_mask2
-        xs, ys = np.where(differences_2 == -1)
-        coords = np.stack((xs, ys), axis = 1)
-        look_cam2 = lookup_table[:, :, 1]
-        for coord in coords:
-            x, y = coord[0], coord[1]
-            remove_pos2 = look_cam2[(look_cam2[:, 3] == x) & (look_cam2[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
-            for vox in remove_pos2:
-                        suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
-                        if suka in visible_voxels:
-                            visible_voxels.remove(suka)
+        for n_cam in range(len(differences)):
+            d = differences[n_cam]
+            xs, ys = np.where(d == -1)
+            coords = np.stack((xs, ys), axis=1)
+            lookup = lookup_table[:, :, n_cam]
 
-        xs, ys = np.where(differences_2 == 1)
-        coords = np.stack((xs, ys), axis = 1)
-        for coord in coords:
-            x, y = coord[0], coord[1]
-            add_pos2 = look_cam2[(look_cam2[:, 3] == x) & (look_cam2[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
-            for vox in add_pos2:
-                        if (vox[0]/75, -vox[2]/75, vox[1]/75) in ciccio:
-                            ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
-                        else:
-                             ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
+            for coord in coords:
+                x, y = coord[0], coord[1]
 
-        differences_3 = current_mask3 - last_mask3
-        xs, ys = np.where(differences_3 == -1)
-        coords = np.stack((xs, ys), axis = 1)
-        look_cam3 = lookup_table[:, :, 2]
-        for coord in coords:
-            x, y = coord[0], coord[1]
-            remove_pos3 = look_cam3[(look_cam1[:, 3] == x) & (look_cam3[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
-            for vox in remove_pos3:
-                        suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
-                        if suka in visible_voxels:
-                            visible_voxels.remove(suka)
+                remove_pos1 = lookup[(lookup[:, 3] == x) & (
+                    lookup[:, 4] == y)][:, :3]  # 3d voxel with given 2d pixels
 
-        xs, ys = np.where(differences_3 == 1)
-        coords = np.stack((xs, ys), axis = 1)
-        for coord in coords:
-            x, y = coord[0], coord[1]
-            add_pos3 = look_cam3[(look_cam3[:, 3] == x) & (look_cam3[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
-            for vox in add_pos3:
-                        if (vox[0]/75, -vox[2]/75, vox[1]/75) in ciccio:
-                            ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
-                        else:
-                             ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
+                for vox in remove_pos1:
+                    suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
+                    if suka in visible_voxels:
+                        visible_voxels.remove(suka)
 
-        differences_4 = current_mask4 - last_mask4
-        xs, ys = np.where(differences_4 == -1)
-        coords = np.stack((xs, ys), axis = 1)
-        look_cam4 = lookup_table[:, :, 3]
-        for coord in coords:
-            x, y = coord[0], coord[1]
-            remove_pos4 = look_cam4[(look_cam4[:, 3] == x) & (look_cam4[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
-            for vox in remove_pos4:
-                        suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
-                        if suka in visible_voxels:
-                            visible_voxels.remove(suka)
+            xs, ys = np.where(d == 1)
+            coords = np.stack((xs, ys), axis=1)
+            
+            for coord in coords:
+                x, y = coord[0], coord[1]
+                add_pos1 = lookup[(lookup[:, 3] == x) & (
+                    lookup[:, 4] == y)][:, :3]  # 3d voxel with given 2d pixels
+                for vox in add_pos1:
+                    if (vox[0]/75, -vox[2]/75, vox[1]/75) in changes:
+                        changes[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
+                    else:
+                        changes[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
 
-        xs, ys = np.where(differences_4 == 1)
-        coords = np.stack((xs, ys), axis = 1)
-        for coord in coords:
-            x, y = coord[0], coord[1]
-            add_pos4 = look_cam4[(look_cam4[:, 3] == x) & (look_cam4[:, 4] == y)][:, :3] #3d voxel with given 2d pixels
-            for vox in add_pos4:
-                        if (vox[0]/75, -vox[2]/75, vox[1]/75) in ciccio:
-                            ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
-                        else:
-                             ciccio[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
-        for vox in ciccio:
-            if ciccio[vox] == 4:
-                 visible_voxels.append(vox)
+        # TODO: CONTROLLARE
+        # unique_values, counts = np.unique(added, return_counts=True)
+        # print(unique_values[counts >= 4])
+        # visible_voxels.append(unique_values[counts >= 4])
+        print(len(changes))
+        for vox in changes:
+            if changes[vox] == 4:
+                visible_voxels.append(vox)
+        print(
+            f"time to reconstruct with difference: {time()-start_reconstruction_diff}")
         print(len(visible_voxels))
         n_frame += 1
         return visible_voxels
+
+
 def get_cam_positions():
     # Generates dummy camera locations at the 4 corners of the room
     # TODO: You need to input the estimated locations of the 4 cameras in the world coordinates.
@@ -256,7 +184,7 @@ def create_cube(width, height, depth):
     for x in np.arange(0, width, 7):
         for y in np.arange(-depth//2, depth//2, 15):
             for z in np.arange(-height, height, 15):
-                    # negative because TODO: find out why
+                # negative because TODO: find out why
                 cube.append([x, y, z])
     return cube
 
@@ -264,7 +192,8 @@ def create_cube(width, height, depth):
 def create_lookup_table(width, height, depth):
     "Creates file for the lookup table mapping 3D voxels to 2D image coordinates for each camera"
 
-    voxel_positions = np.array(create_cube(width, height, depth), dtype=np.float32)
+    voxel_positions = np.array(create_cube(
+        width, height, depth), dtype=np.float32)
     lookup_table = np.zeros((voxel_positions.shape[0], 5, 4))
     for camera_i in range(1, 5):
         s = cv.FileStorage(
@@ -274,7 +203,8 @@ def create_lookup_table(width, height, depth):
         tvec_extr = s.getNode('tvec_extr').mat()
         rvec_extr = s.getNode('rvec_extr').mat()
         s.release()
-        for i, pos in enumerate(voxel_positions):  # for each 3D point of the voxel cube
+        # for each 3D point of the voxel cube
+        for i, pos in enumerate(voxel_positions):
             # project the point in the 2D image plane for this camera
             imgpoint, _ = cv.projectPoints(
                 pos, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
@@ -282,9 +212,11 @@ def create_lookup_table(width, height, depth):
             x = imgpoint[0]
             y = imgpoint[1]
             if x >= 0 and x <= 644 and y >= 0 and y < 486:
-                lookup_table[i, :, camera_i-1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]  # store voxel (glm)
+                # store voxel (glm)
+                lookup_table[i, :, camera_i -
+                             1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]
 
-    np.savez('data/lookup_table', lookup_table = lookup_table)
+    np.savez('data/lookup_table', lookup_table=lookup_table)
     # with open(f'data/lookup_table.txt', 'w+') as f:
     #     f.write(str(lookup_table))
     return voxel_positions, lookup_table
