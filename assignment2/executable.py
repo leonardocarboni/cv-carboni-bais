@@ -65,7 +65,8 @@ def main():
                                     glfw.get_primary_monitor(),
                                     None)
     else:
-        window = glfw.create_window(window_width, window_height, config['app_name'], None, None)
+        window = glfw.create_window(
+            window_width, window_height, config['app_name'], None, None)
     if not window:
         print('Failed to create GLFW Window.')
         glfw.terminate()
@@ -82,10 +83,14 @@ def main():
     glEnable(GL_CULL_FACE)
     glCullFace(GL_BACK)
 
-    program = get_linked_program('resources/shaders/vert.vs', 'resources/shaders/frag.fs')
-    depth_program = get_linked_program('resources/shaders/shadow_depth.vs', 'resources/shaders/shadow_depth.fs')
-    blur_program = get_linked_program('resources/shaders/blur.vs', 'resources/shaders/blur.fs')
-    hdr_program = get_linked_program('resources/shaders/hdr.vs', 'resources/shaders/hdr.fs')
+    program = get_linked_program(
+        'resources/shaders/vert.vs', 'resources/shaders/frag.fs')
+    depth_program = get_linked_program(
+        'resources/shaders/shadow_depth.vs', 'resources/shaders/shadow_depth.fs')
+    blur_program = get_linked_program(
+        'resources/shaders/blur.vs', 'resources/shaders/blur.fs')
+    hdr_program = get_linked_program(
+        'resources/shaders/hdr.vs', 'resources/shaders/hdr.fs')
 
     blur_program.use()
     blur_program.setInt('image', 0)
@@ -102,10 +107,12 @@ def main():
     bloom = Bloom(hdrbuffer, hdr_program, blurbuffer, blur_program)
 
     light_pos = glm.vec3(0.5, 0.5, 0.5)
-    perspective = glm.perspective(45, window_width / window_height, config['near_plane'], config['far_plane'])
+    perspective = glm.perspective(
+        45, window_width / window_height, config['near_plane'], config['far_plane'])
 
     cam_rot_matrices = get_cam_rotation_matrices()
-    cam_shapes = [Model('resources/models/camera.json', cam_rot_matrices[c]) for c in range(4)]
+    cam_shapes = [Model('resources/models/camera.json',
+                        cam_rot_matrices[c]) for c in range(4)]
     square = Model('resources/models/square.json')
     cube = Model('resources/models/cube.json')
     texture = load_texture_2d('resources/textures/diffuse.jpg')
@@ -117,7 +124,8 @@ def main():
     depth = load_texture_2d('resources/textures/depth.jpg')
     depth_grid = load_texture_2d('resources/textures/depth_grid.jpg')
 
-    grid_positions = generate_grid(config['world_width'], config['world_width'])
+    grid_positions = generate_grid(
+        config['world_width'], config['world_width'])
     square.set_multiple_positions(grid_positions)
 
     cam_positions = get_cam_positions()
@@ -147,10 +155,13 @@ def main():
         glViewport(0, 0, window_width, window_height)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        draw_objs(square, program, perspective, light_pos, texture_grid, normal_grid, specular_grid, depth_grid)
-        draw_objs(cube, program, perspective, light_pos, texture, normal, specular, depth)
+        draw_objs(square, program, perspective, light_pos,
+                  texture_grid, normal_grid, specular_grid, depth_grid)
+        draw_objs(cube, program, perspective, light_pos,
+                  texture, normal, specular, depth)
         for cam in cam_shapes:
-            draw_objs(cam, program, perspective, light_pos, texture_grid, normal_grid, specular_grid, depth_grid)
+            draw_objs(cam, program, perspective, light_pos,
+                      texture_grid, normal_grid, specular_grid, depth_grid)
 
         hdrbuffer.unbind()
         hdrbuffer.finalize()
@@ -167,7 +178,8 @@ def resize_callback(window, w, h):
     if h > 0:
         global window_width, window_height, hdrbuffer, blurbuffer
         window_width, window_height = w, h
-        glm.perspective(45, window_width / window_height, config['near_plane'], config['far_plane'])
+        glm.perspective(45, window_width / window_height,
+                        config['near_plane'], config['far_plane'])
         hdrbuffer.delete()
         hdrbuffer.create(window_width, window_height)
         blurbuffer.delete()
@@ -179,7 +191,8 @@ def key_callback(window, key, scancode, action, mods):
         glfw.set_window_should_close(window, glfw.TRUE)
     if key == glfw.KEY_G and action == glfw.PRESS:
         global cube
-        positions = set_voxel_positions(config['world_width'], config['world_height'], config['world_width'])
+        positions = set_voxel_positions(
+            config['world_width'], config['world_height'], config['world_width'])
         cube.set_multiple_positions(positions)
 
 
