@@ -8,6 +8,7 @@ block_size = 1
 block_size2 = 115
 n_frame = 0
 visible_voxels = []
+lookup_table = []
 
 with np.load('./data/cam1/masks.npz') as file:
     mask1 = file['masks']
@@ -33,30 +34,35 @@ def generate_grid(width, depth):
 def set_voxel_positions(width, height, depth):
     global n_frame
     global visible_voxels
+    global lookup_table
     start_lookup = time()
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     # Reading the stored lookup table
-    # voxel_positions, lookup_table = create_lookup_table(750, 1500, 1500)
-    with np.load(f'./data/lookup_table.npz') as file:
+
+    # COMMENT THIS AND UNCOMMENT ROW 53 IF YOU WANT TO BUILD LOOK UP TABLE THE FIRST FRAME RATHER THAN LOAD IT FROM FILE
+    with np.load(f'./data/lookup_table3.npz') as file:
         lookup_table = file['lookup_table']
     voxel_positions = np.array(create_cube(750, 1500, 1500), dtype=np.float32)
     print(f"time to load/create lookup table: {time()-start_lookup}")
-    # Visible voxels for each camera
+    
+    # Last frame to be reconstructed
     if n_frame == 50:
-        n_frame = 0
-        visible_voxels = []
+        n_frame = 0 # reset frame count
+        visible_voxels = [] # reset silhouette
         return visible_voxels
 
+    # first frame encountered
     if n_frame == 0:
+        # voxel_positions, lookup_table = create_lookup_table(750, 1500, 1500) # UNCOMMENT THIS 
         start_reconstruction = time()
-        for vox in range(voxel_positions.shape[0]):
-            flag = True
-            for i in range(4):
-                x_voxels, y_voxels, z_voxels, x, y = lookup_table[vox, :, i]
+        for vox in range(voxel_positions.shape[0]): # for each voxel id
+            flag = True # the voxel is foreground for all cameras (flag)
+            for i in range(4): # for each camera
+                x_voxels, y_voxels, z_voxels, x, y = lookup_table[vox, :, i] # extract voxel 3D and 2D coordinates for that camera
                 x = int(x)
                 y = int(y)
-                # to show cube in front of mask
+                # check if the pixel is foreground for all cameras
                 if i == 0 and mask1[0][y, x] == 0:
                     flag = False
                 if i == 1 and mask2[0][y, x] == 0:
@@ -65,14 +71,14 @@ def set_voxel_positions(width, height, depth):
                     flag = False
                 if i == 3 and mask4[0][y, x] == 0:
                     flag = False
-            if flag:
-                visible_voxels.append([x_voxels/75, -z_voxels/75, y_voxels/75])
+            if flag: # if it is foreground for all cameras
+                visible_voxels.append([x_voxels/75, -z_voxels/75, y_voxels/75]) # adapt to glm format, scale and add to reconstruction 
         print(f"time to reconstruct all: {time()-start_reconstruction}")
-        n_frame += 1
+        n_frame += 1 # next frame
         return visible_voxels
-    else:
+    else: # a frame other than the first, we perform optimization by only looking at changed pixels
         start_reconstruction_diff = time()
-        changes = {}
+        # load last and current frames' masks for each camera
         current_mask1 = np.array(mask1[n_frame], dtype=np.int8)
         last_mask1 = np.array(mask1[n_frame-1], dtype=np.int8)
         current_mask2 = np.array(mask2[n_frame], dtype=np.int8)
@@ -82,47 +88,53 @@ def set_voxel_positions(width, height, depth):
         current_mask4 = np.array(mask4[n_frame], dtype=np.int8)
         last_mask4 = np.array(mask4[n_frame-1], dtype=np.int8)
 
+        # differences on the masks between the frames for each camera
         differences = [current_mask1 - last_mask1, current_mask2 -
                        last_mask2, current_mask3 - last_mask3, current_mask4 - last_mask4]
 
-        for n_cam in range(len(differences)):
+        # turning pixels off section
+        for n_cam in range(len(differences)): # for each camera
             d = differences[n_cam]
-            xs, ys = np.where(d == -1)
+            xs, ys = np.where(d == -1) # voxels to turn off
             coords = np.stack((xs, ys), axis=1)
-            lookup = lookup_table[:, :, n_cam]
-
-            for coord in coords:
-                x, y = coord[0], coord[1]
-
+            lookup = lookup_table[:, :, n_cam] # extract the lookup table for the camrea of interest
+            for coord in coords: # for each 2D pixel changed between frames for this camera
+                x, y = coord[1], coord[0] # opencv format
                 remove_pos1 = lookup[(lookup[:, 3] == x) & (
-                    lookup[:, 4] == y)][:, :3]  # 3d voxel with given 2d pixels
+                    lookup[:, 4] == y)][:, :3]  # extract all the 3D voxels corresponding to the 2D pixels
+                for vox in remove_pos1: # for each of those voxels
+                    vox_glm = [vox[0]/75, -vox[2]/75, vox[1]/75]
+                    if vox_glm in visible_voxels: # check if voxel was part of the reconstruction
+                        visible_voxels.remove(vox_glm) # turn voxel off
 
-                for vox in remove_pos1:
-                    suka = [vox[0]/75, -vox[2]/75, vox[1]/75]
-                    if suka in visible_voxels:
-                        visible_voxels.remove(suka)
-
-            xs, ys = np.where(d == 1)
-            coords = np.stack((xs, ys), axis=1)
-            
-            for coord in coords:
-                x, y = coord[0], coord[1]
-                add_pos1 = lookup[(lookup[:, 3] == x) & (
-                    lookup[:, 4] == y)][:, :3]  # 3d voxel with given 2d pixels
-                for vox in add_pos1:
-                    if (vox[0]/75, -vox[2]/75, vox[1]/75) in changes:
-                        changes[(vox[0]/75, -vox[2]/75, vox[1]/75)] += 1
-                    else:
-                        changes[(vox[0]/75, -vox[2]/75, vox[1]/75)] = 1
-
-        # TODO: CONTROLLARE
-        # unique_values, counts = np.unique(added, return_counts=True)
-        # print(unique_values[counts >= 4])
-        # visible_voxels.append(unique_values[counts >= 4])
-        print(len(changes))
-        for vox in changes:
-            if changes[vox] == 4:
-                visible_voxels.append(vox)
+        # turning pixels on section
+        all_coords = []
+        for d in differences: # for each camera difference
+            xs, ys = np.where(d == 1) # voxels to turn on
+            all_coords.append(np.stack((xs, ys), axis=1))
+        # print(f"cam numero {n_cam}: {coords}")
+        for coords in all_coords: # for all coordinates changed for each camera
+            for coord in coords: # for all 2D pixels
+                x, y = coord[1], coord[0]
+                all_pos = np.where((lookup[:, 3] == x) & (lookup[:, 4] == y))[0] # get all voxels ID corresponding to the 2D pixels
+                for pos in all_pos: # for each voxel ID
+                    # same as frame 1 but with the current mask
+                    flag = True
+                    for i in range(4):
+                        x_voxels, y_voxels, z_voxels, x, y = lookup_table[pos, :, i]
+                        x = int(x)
+                        y = int(y)
+                        if i == 0 and mask1[n_frame][y, x] == 0:
+                            flag = False
+                        if i == 1 and mask2[n_frame][y, x] == 0:
+                            flag = False
+                        if i == 2 and mask3[n_frame][y, x] == 0:
+                            flag = False
+                        if i == 3 and mask4[n_frame][y, x] == 0:
+                            flag = False
+                    if flag:
+                        visible_voxels.append([x_voxels/75, -z_voxels/75, y_voxels/75])
+                        print("Appended voxel: ", [x_voxels/75, -z_voxels/75, y_voxels/75])
         print(
             f"time to reconstruct with difference: {time()-start_reconstruction_diff}")
         print(len(visible_voxels))
@@ -179,23 +191,24 @@ def get_cam_rotation_matrices():
 
 
 def create_cube(width, height, depth):
-    # w, h, d = 750, 1500, 1500  # 7 chessboard squares (cols)
+    "creates a solid with resolution 100x100x100"
     cube = []
-    for x in np.arange(0, width, 7):
+    for x in np.arange(0, width, 8):
         for y in np.arange(-depth//2, depth//2, 15):
-            for z in np.arange(-height, height, 15):
-                # negative because TODO: find out why
+            for z in np.arange(-height, height, 30):
                 cube.append([x, y, z])
     return cube
 
 
 def create_lookup_table(width, height, depth):
-    "Creates file for the lookup table mapping 3D voxels to 2D image coordinates for each camera"
-
+    "Returns the lookup table mapping each voxels to its correspongin 3D and 2D coordinates for each camera"
+    "Inputs are for the placement of the solid for the reconstruction"
+    # create solid
     voxel_positions = np.array(create_cube(
-        width, height, depth), dtype=np.float32)
-    lookup_table = np.zeros((voxel_positions.shape[0], 5, 4))
-    for camera_i in range(1, 5):
+        width, height, depth), dtype=np.float32) 
+    lookup_table = np.zeros((voxel_positions.shape[0], 5, 4)) # initialize look up table
+    for camera_i in range(1, 5): # for each camera
+        # load parameters
         s = cv.FileStorage(
             f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
         camera_matrix = s.getNode('camera_matrix').mat()
@@ -203,7 +216,7 @@ def create_lookup_table(width, height, depth):
         tvec_extr = s.getNode('tvec_extr').mat()
         rvec_extr = s.getNode('rvec_extr').mat()
         s.release()
-        # for each 3D point of the voxel cube
+        # for each 3D point of the voxel solid
         for i, pos in enumerate(voxel_positions):
             # project the point in the 2D image plane for this camera
             imgpoint, _ = cv.projectPoints(
@@ -211,15 +224,13 @@ def create_lookup_table(width, height, depth):
             imgpoint = imgpoint.ravel()
             x = imgpoint[0]
             y = imgpoint[1]
-            if x >= 0 and x <= 644 and y >= 0 and y < 486:
-                # store voxel (glm)
+            if x >= 0 and x < 644 and y >= 0 and y < 486: # if the 2D pixel is in range of the frame
+                # store 2D and 3D coordinates
                 lookup_table[i, :, camera_i -
-                             1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]
+                             1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)] 
 
-    np.savez('data/lookup_table', lookup_table=lookup_table)
-    # with open(f'data/lookup_table.txt', 'w+') as f:
-    #     f.write(str(lookup_table))
+    np.savez('data/lookup_table3', lookup_table=lookup_table) # comment in the actual execution
     return voxel_positions, lookup_table
 
-# create_lookup_table()
+# create_lookup_table(750, 1500, 1500)
 # print(set_voxel_positions(1,2,3))
