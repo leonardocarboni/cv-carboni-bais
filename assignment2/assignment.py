@@ -77,7 +77,7 @@ def set_voxel_positions(width, height, depth):
         n_frame += 1 # next frame
         return visible_voxels
     else: # a frame other than the first, we perform optimization by only looking at changed pixels
-        start_reconstruction_diff = time()
+        
         # load last and current frames' masks for each camera
         current_mask1 = np.array(mask1[n_frame], dtype=np.int8)
         last_mask1 = np.array(mask1[n_frame-1], dtype=np.int8)
@@ -91,32 +91,18 @@ def set_voxel_positions(width, height, depth):
         # differences on the masks between the frames for each camera
         differences = [current_mask1 - last_mask1, current_mask2 -
                        last_mask2, current_mask3 - last_mask3, current_mask4 - last_mask4]
-
-        # turning pixels off section
-        for n_cam in range(len(differences)): # for each camera
-            d = differences[n_cam]
-            xs, ys = np.where(d == -1) # voxels to turn off
+        
+        start_reconstruction_opt = time()
+        removed = 0
+        added = 0
+        for n_cam in range(len(differences)):
+            d = differences[n_cam] # differences in mask N
+            xs, ys = np.where((d == 1) | (d == -1)) # voxels that have changed
             coords = np.stack((xs, ys), axis=1)
-            lookup = lookup_table[:, :, n_cam] # extract the lookup table for the camrea of interest
-            for coord in coords: # for each 2D pixel changed between frames for this camera
-                x, y = coord[1], coord[0] # opencv format
-                remove_pos1 = lookup[(lookup[:, 3] == x) & (
-                    lookup[:, 4] == y)][:, :3]  # extract all the 3D voxels corresponding to the 2D pixels
-                for vox in remove_pos1: # for each of those voxels
-                    vox_glm = [vox[0]/75, -vox[2]/75, vox[1]/75]
-                    if vox_glm in visible_voxels: # check if voxel was part of the reconstruction
-                        visible_voxels.remove(vox_glm) # turn voxel off
-
-        # turning pixels on section
-        all_coords = []
-        for d in differences: # for each camera difference
-            xs, ys = np.where(d == 1) # voxels to turn on
-            all_coords.append(np.stack((xs, ys), axis=1))
-        # print(f"cam numero {n_cam}: {coords}")
-        for coords in all_coords: # for all coordinates changed for each camera
-            for coord in coords: # for all 2D pixels
+            lookup = lookup_table[:, :, n_cam] # lookup table for the current camera
+            for coord in coords: # for each 2D changed pixel
                 x, y = coord[1], coord[0]
-                all_pos = np.where((lookup[:, 3] == x) & (lookup[:, 4] == y))[0] # get all voxels ID corresponding to the 2D pixels
+                all_pos = np.where((lookup[:, 3] == x) & (lookup[:, 4] == y))[0] # get all corresponding voxels ID
                 for pos in all_pos: # for each voxel ID
                     # same as frame 1 but with the current mask
                     flag = True
@@ -124,6 +110,7 @@ def set_voxel_positions(width, height, depth):
                         x_voxels, y_voxels, z_voxels, x, y = lookup_table[pos, :, i]
                         x = int(x)
                         y = int(y)
+                        vox = [x_voxels/75, -z_voxels/75, y_voxels/75]
                         if i == 0 and mask1[n_frame][y, x] == 0:
                             flag = False
                         if i == 1 and mask2[n_frame][y, x] == 0:
@@ -132,11 +119,16 @@ def set_voxel_positions(width, height, depth):
                             flag = False
                         if i == 3 and mask4[n_frame][y, x] == 0:
                             flag = False
-                    if flag:
+                    if not flag and vox in visible_voxels: # if at least a camera said background
+                        visible_voxels.remove(vox)
+                        removed +=1
+                        # print("Removed voxel: ", vox)
+                    if flag: # if it's foreground
                         visible_voxels.append([x_voxels/75, -z_voxels/75, y_voxels/75])
-                        print("Appended voxel: ", [x_voxels/75, -z_voxels/75, y_voxels/75])
-        print(
-            f"time to reconstruct with difference: {time()-start_reconstruction_diff}")
+                        # print("Appended voxel: ", [x_voxels/75, -z_voxels/75, y_voxels/75])
+                        added += 1
+        print(f"time reconstruct optimaly: {time()-start_reconstruction_opt}")
+        print(f"voxels removed this frame: {removed}, voxels added this frame: {added}")
         print(len(visible_voxels))
         n_frame += 1
         return visible_voxels
