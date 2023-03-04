@@ -4,6 +4,9 @@
 
 /assignment2/data/lookup_table.npz
 
+/assignment3/4persons/*
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
