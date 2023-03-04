@@ -41,7 +41,7 @@ def find_best_mask(ground_truth, foreground_hsv):
     best_differences = ground_truth.shape[0] * ground_truth.shape[1]
     best_mask = np.zeros((w, h), dtype=np.uint8)
     for hue in range(0, 11):
-        for saturation in range(0, 6, 5):
+        for saturation in range(0, 11, 5):
             for value in range(0, 31, 5):
                 mask = np.zeros((w, h), dtype=np.uint8)
                 for x in range(foreground_hsv.shape[0]):
@@ -124,8 +124,8 @@ for camera_i in range(1, 5):
             final_mask[labels == biggest_component] = 255
 
             output = cv.bitwise_and(frame, frame, mask=final_mask)
-            show_image(final_mask, "Final Mask")
-            show_image(output, "Masked Image")
+            show_image(final_mask, "Final Mask") # comment if not interested in the visualization
+            show_image(output, "Masked Image") # comment if not interested in the visualization
             all_masks.append(final_mask)
-    
+
     np.savez(f"data/cam{camera_i}/masks", masks=all_masks)

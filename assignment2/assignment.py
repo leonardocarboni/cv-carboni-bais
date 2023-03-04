@@ -3,6 +3,7 @@ import random
 import numpy as np
 import cv2 as cv
 from time import time
+import os
 
 block_size = 1
 block_size2 = 115
@@ -18,7 +19,6 @@ with np.load('./data/cam3/masks.npz') as file:
     mask3 = file['masks']
 with np.load('./data/cam4/masks.npz') as file:
     mask4 = file['masks']
-
 
 def generate_grid(width, depth):
     # Generates the floor grid locations
@@ -41,10 +41,7 @@ def set_voxel_positions(width, height, depth):
     # Reading the stored lookup table
 
     # COMMENT THIS AND UNCOMMENT ROW 53 IF YOU WANT TO BUILD LOOK UP TABLE THE FIRST FRAME RATHER THAN LOAD IT FROM FILE
-    with np.load(f'./data/lookup_table.npz') as file:
-        lookup_table = file['lookup_table']
-    voxel_positions = np.array(create_cube(750, 1500, 1500), dtype=np.float32)
-    print(f"time to load/create lookup table: {time()-start_lookup}")
+    
 
     # Last frame to be reconstructed
     if n_frame == 50:
@@ -54,7 +51,16 @@ def set_voxel_positions(width, height, depth):
 
     # first frame encountered
     if n_frame == 0:
-        # voxel_positions, lookup_table = create_lookup_table(750, 1500, 1500) # UNCOMMENT THIS
+        exists = os.path.isfile('./data/lookup_table.npz') 
+        if exists: # if lookup table already exists, load it
+            with np.load(f'./data/lookup_table.npz') as file:
+                lookup_table = file['lookup_table']
+            voxel_positions = np.array(create_cube(750, 1500, 1500), dtype=np.float32)
+            print(f"time to load/create lookup table: {time()-start_lookup}")
+        else: # if it does not, create it and save the file 
+            voxel_positions, lookup_table = create_lookup_table(750, 1500, 1500)
+            print(f"time to load/create lookup table: {time()-start_lookup}")
+
         start_reconstruction = time()
         for vox in range(voxel_positions.shape[0]):  # for each voxel id
             flag = True  # the voxel is foreground for all cameras (flag)
@@ -132,10 +138,9 @@ def set_voxel_positions(width, height, depth):
                             [x_voxels/75, -z_voxels/75, y_voxels/75])
                         # print("Appended voxel: ", [x_voxels/75, -z_voxels/75, y_voxels/75])
                         added += 1
-        print(f"time reconstruct optimaly: {time()-start_reconstruction_opt}")
+        print(f"time reconstruct optimally: {time()-start_reconstruction_opt}")
         print(
             f"voxels removed this frame: {removed}, voxels added this frame: {added}")
-        print(len(visible_voxels))
         n_frame += 1
         return visible_voxels
 
@@ -189,7 +194,7 @@ def get_cam_rotation_matrices():
 
 
 def create_cube(width, height, depth):
-    "creates a solid with resolution 100x100x100"
+    "creates a solid with resolution 100x100x100 with the current inputs"
     cube = []
     for x in np.arange(0, width, 8):
         for y in np.arange(-depth//2, depth//2, 15):
@@ -228,9 +233,5 @@ def create_lookup_table(width, height, depth):
                 lookup_table[i, :, camera_i -
                              1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]
 
-    # comment in the actual execution
     np.savez('data/lookup_table', lookup_table=lookup_table)
     return voxel_positions, lookup_table
-
-# create_lookup_table(750, 1500, 1500)
-# print(set_voxel_positions(1,2,3))
