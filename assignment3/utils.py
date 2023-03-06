@@ -25,6 +25,8 @@ axis = np.float32([[dim_square * 3, 0, 0], [0, dim_square * 3,
 op = np.array([(x, y, 0) for y in range(CHESSBOARD_VERTICES[1])
                for x in range(CHESSBOARD_VERTICES[0])], dtype=np.float32) * dim_square
 
+best_masks = {'1': (2, 0, 15), '2': (10, 0, 30),
+              '3': (4, 0, 30), '4': (1, 0, 25)}
 
 def show_image(img, name="chessboard"):
     """

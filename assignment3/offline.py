@@ -69,7 +69,8 @@ for camera_i in range(4):
         axis, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
     frame = draw_axis(img, corners.round().astype(
         np.int32), vp_axis.round().astype(np.int32))
-    show_image(frame, "Axis on Chessboard")
+    if show:
+        show_image(frame, "Axis on Chessboard")
     
     R, _ = cv.Rodrigues(rvec_extr)
 
@@ -81,7 +82,7 @@ for camera_i in range(4):
     s.write('dist_coeffs', dist_coeffs)
     s.write('tvec_extr', tvec_extr)
     s.write('rvec_extr', rvec_extr)
-    s.write('R_MAT', R)
+    s.write('R_MAT', R) 
     s.release()
 
     # read bacground video
@@ -98,3 +99,35 @@ for camera_i in range(4):
 
     if show:
         show_image(background, f"Cam{camera_i+1} Background")
+
+    # masks extraction
+    cap = cv.VideoCapture(cameras_videos_info[camera_i][-1])
+    all_masks = []
+    for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2): # 2724
+        retF, frame = cap.read()
+        if retF and i == 580:
+            w, h, _ = frame.shape
+            frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+            background_pixels_hsv = cv.cvtColor(background, cv.COLOR_BGR2HSV)
+            foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
+
+            hue, saturation, value = best_masks[str(camera_i+1)]
+            best_mask = np.zeros((w, h), dtype=np.uint8)
+            for x in range(foreground_hsv.shape[0]):
+                for y in range(foreground_hsv.shape[1]):
+                    if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
+                        best_mask[x, y] = 255
+            show_image(best_mask, "MASK")
+
+            # best_mask = cv.morphologyEx(
+            #     best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (2, 2)))
+            best_mask = cv.morphologyEx(
+                best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10)))
+            output = cv.bitwise_and(frame, frame, mask=best_mask)
+            all_masks.append(best_mask)
+            show_image(best_mask, "MASK")
+            np.savez(f"data/cam{camera_i+1}/masks", masks=all_masks)
+            break
+    cap.release()
+    # np.savez(f"data/cam{camera_i+1}/masks", masks=all_masks)
+        
