@@ -59,11 +59,11 @@ def set_voxel_positions(width, height, depth):
             with np.load(f'./data/lookup_table.npz') as file:
                 lookup_table = file['lookup_table']
             voxel_positions = np.array(create_cube(
-                1500, 3000, 3000), dtype=np.float32)
+                3000, 6000, 6000), dtype=np.float32)
             print(f"time to load/create lookup table: {time()-start_lookup}")
         else:  # if it does not, create it and save the file
             voxel_positions, lookup_table = create_lookup_table(
-                1500, 3000, 3000)
+                3000, 6000, 6000)
             print(f"time to load/create lookup table: {time()-start_lookup}")
 
         start_reconstruction = time()
@@ -87,6 +87,7 @@ def set_voxel_positions(width, height, depth):
                 # adapt to glm format, scale and add to reconstruction
                 visible_voxels.append([x_voxels/75, -z_voxels/75, y_voxels/75])
         print(f"time to reconstruct all: {time()-start_reconstruction}")
+        
         # n_frame += 1  # next frame
         flags = cv.KMEANS_RANDOM_CENTERS
         voxels_to_cluster = np.array([[x[0], x[2]] for x in visible_voxels], dtype = np.float32)
@@ -96,6 +97,7 @@ def set_voxel_positions(width, height, depth):
         for i, _ in enumerate(visible_voxels):
             label = labels[i][0]
             colors.append(labels_to_color[str(label)])
+        
         return visible_voxels, colors
     else:  # a frame other than the first, we perform optimization by only looking at changed pixels
 
@@ -186,9 +188,9 @@ def get_cam_rotation_matrices():
 def create_cube(width, height, depth):
     "creates a solid with resolution 100x100x100 with the current inputs"
     cube = []
-    for x in np.arange(0, width, 8):
-        for y in np.arange(-depth//2, depth//2, 15):
-            for z in np.arange(-height, height, 30):
+    for x in np.arange(-width//4, 3*width//4, 32):
+        for y in np.arange(-depth//2, depth//2, 60):
+            for z in np.arange(-height, height, 120):
                 cube.append([x, y, z])
     return cube
 
@@ -201,7 +203,7 @@ def create_lookup_table(width, height, depth):
         width, height, depth), dtype=np.float32)
     # initialize look up table
     lookup_table = np.zeros((voxel_positions.shape[0], 5, 4))
-    for camera_i in range(1, 2):  # for each camera
+    for camera_i in range(1, 5):  # for each camera
         # load parameters
         s = cv.FileStorage(
             f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
@@ -228,3 +230,8 @@ def create_lookup_table(width, height, depth):
 
 # print(create_lookup_table(1500, 3000, 3000)[1])
 # set_voxel_positions(1500, 3000,3000)
+
+show_image(mask1[0], "jnas")
+show_image(mask2[0], "jnas")
+show_image(mask3[0], "jnas")
+show_image(mask4[0], "jnas")

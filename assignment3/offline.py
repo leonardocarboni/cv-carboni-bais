@@ -105,7 +105,7 @@ for camera_i in range(4):
     all_masks = []
     for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2): # 2724
         retF, frame = cap.read()
-        if retF and i == 580:
+        if retF and i == 1900:
             w, h, _ = frame.shape
             frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
             background_pixels_hsv = cv.cvtColor(background, cv.COLOR_BGR2HSV)
