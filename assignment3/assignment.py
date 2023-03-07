@@ -4,19 +4,25 @@ import numpy as np
 import cv2 as cv
 from time import time
 import os
+
+from sklearn.preprocessing import normalize
 from utils import *
 import matplotlib.pyplot as plt
+
+
+show = False
 
 block_size = 1.0
 n_frame = 0
 visible_voxels = []
 lookup_table = []
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-labels_to_color = {'0': (255,0,0), '1': (0,255,0), '2': (0, 0, 255), '3': (255, 0, 255)}
+labels_to_color = {'0': (255, 0, 0), '1': (0, 255, 0),
+                   '2': (0, 0, 255), '3': (255, 0, 255)}
 
-cap = cv.VideoCapture(cameras_videos_info[1][2]) # video of camera 2
+cap = cv.VideoCapture(cameras_videos_info[1][2])  # video of camera 2
 w, h = int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(
-        cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+    cap.get(cv.CAP_PROP_FRAME_HEIGHT))
 retF, frame = cap.read()
 cap.release()
 
@@ -30,7 +36,7 @@ with np.load('./data/cam4/masks.npz') as file:
     mask4 = file['masks']
 
 s = cv.FileStorage(
-            f"./data/cam2/config.xml", cv.FileStorage_READ)
+    f"./data/cam2/config.xml", cv.FileStorage_READ)
 camera_matrix = s.getNode('camera_matrix').mat()
 dist_coeffs = s.getNode('dist_coeffs').mat()
 rvec_extr = s.getNode('rvec_extr').mat()
@@ -102,10 +108,11 @@ def set_voxel_positions(width, height, depth):
                 # adapt to glm format, scale and add to reconstruction
                 visible_voxels.append([x_voxels/75, -z_voxels/75, y_voxels/75])
         print(f"time to reconstruct all: {time()-start_reconstruction}")
-        
+
         # n_frame += 1  # next frame
         flags = cv.KMEANS_RANDOM_CENTERS
-        voxels_to_cluster = np.array([[x[0], x[2]] for x in visible_voxels], dtype = np.float32)
+        voxels_to_cluster = np.array([[x[0], x[2]]
+                                     for x in visible_voxels], dtype=np.float32)
         compactness, labels, centers = cv.kmeans(
             voxels_to_cluster, 4, None, criteria, 20, flags)
         colors = []
@@ -116,20 +123,25 @@ def set_voxel_positions(width, height, depth):
         pixels_colors = []
         color_model = {'0': [], '1': [], '2': [], '3': []}
         for i_label, vox in enumerate(visible_voxels):
-            x_3D, y_3D, z_3D = (int(vox[0]*75),  int(vox[2]*75), int(-vox[1]*75))
+            x_3D, y_3D, z_3D = (
+                int(vox[0]*75),  int(vox[2]*75), int(-vox[1]*75))
             # pos = np.where((lookup_table[:, 0, 1] == x) & (lookup_table[:, 1, 1] == y) & (lookup_table[:, 2, 1] == z))
             # print("hello", pos)
             # pixels = lookup_table[pos, 3:5, 1]
-            img_points, _ = cv.projectPoints(np.array([x_3D, y_3D, z_3D], dtype = np.float32), rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
-            x, y = (int(img_points.ravel()[0]), int(img_points.ravel()[1])) # x is < 644, y is < 486
-            pixels_colors.append(((x, y), labels[i_label][0], frame[y, x])) # tuple (2d pixel, clustering label, original color)
+            img_points, _ = cv.projectPoints(np.array(
+                [x_3D, y_3D, z_3D], dtype=np.float32), rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
+            x, y = (int(img_points.ravel()[0]), int(
+                img_points.ravel()[1]))  # x is < 644, y is < 486
+            # tuple (2d pixel, clustering label, original color)
+            pixels_colors.append(((x, y), labels[i_label][0], frame[y, x]))
         for pc in pixels_colors:
             cv.circle(frame_copy, pc[0], 2, labels_to_color[str(pc[1])], 2)
             color_model[str(pc[1])].append(pc[2])
         # print(color_model)
-        plt.hist(color_model['0'])
-        plt.show()
-        show_image(frame_copy, "silhouttes")
+        if show:
+            plt.hist(color_model['0'])
+            plt.show()
+            show_image(frame_copy, "silhouttes")
         return visible_voxels, colors
     else:  # a frame other than the first, we perform optimization by only looking at changed pixels
 
@@ -195,34 +207,59 @@ def set_voxel_positions(width, height, depth):
 def get_cam_positions():
     # Generates dummy camera locations at the 4 corners of the room
     # TODO: You need to input the estimated locations of the 4 cameras in the world coordinates.
-    return [[-64 * block_size, 64 * block_size, 63 * block_size],
-            [63 * block_size, 64 * block_size, 63 * block_size],
-            [63 * block_size, 64 * block_size, -64 * block_size],
-            [-64 * block_size, 64 * block_size, -64 * block_size]], \
-        [[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1.0], [1.0, 1.0, 0]]
+    positions = []
+    for camera_i in range(1, 5):
+        s = cv.FileStorage(
+            f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
+        tvec_extr = s.getNode('tvec_extr').mat()
+        R = s.getNode('R_MAT').mat()
+        positions.append(np.dot(-R.T, tvec_extr))
+        s.release()
+    positions = np.stack(positions)
+    # positions = normalize(positions.squeeze(), axis=0)
+    positions = positions.squeeze()
+    # normalization
+    positions = normalize(positions.squeeze(), axis=0) * 64
+    # converting from opencv space to glm space
+    # swap y and z
+    positions[:, [1, 2]] = positions[:, [2, 1]]
+    # abs y positions
+    positions[:, 1] = np.abs(positions[:, 1])
+
+    return positions, [(255, 255, 255), (255, 255, 255), (255, 255, 255), (255, 255, 255)]
 
 
 def get_cam_rotation_matrices():
     # Generates dummy camera rotation matrices, looking down 45 degrees towards the center of the room
     # TODO: You need to input the estimated camera rotation matrices (4x4) of the 4 cameras in the world coordinates.
-    cam_angles = [[0, 45, -45], [0, 135, -45], [0, 225, -45], [0, 315, -45]]
-    cam_rotations = [glm.mat4(1), glm.mat4(1), glm.mat4(1), glm.mat4(1)]
-    for c in range(len(cam_rotations)):
-        cam_rotations[c] = glm.rotate(
-            cam_rotations[c], cam_angles[c][0] * np.pi / 180, [1, 0, 0])
-        cam_rotations[c] = glm.rotate(
-            cam_rotations[c], cam_angles[c][1] * np.pi / 180, [0, 1, 0])
-        cam_rotations[c] = glm.rotate(
-            cam_rotations[c], cam_angles[c][2] * np.pi / 180, [0, 0, 1])
+    cam_rotations = []
+    for camera_i in range(1, 5):
+        s = cv.FileStorage(
+            f"data/cam{camera_i}/config.xml", cv.FileStorage_READ)
+        tvec_extr = s.getNode('tvec_extr').mat()
+        R = s.getNode('R_MAT').mat()
+
+        t1 = np.hstack((R, tvec_extr))
+        t1 = np.vstack((t1, [0, 0, 0, 1]))
+        # swap y and z
+        t1[:, [1, 2]] = t1[:, [2, 1]]
+        # invert x rotation of the camears
+        t1[:, 1] = -t1[:, 1]
+        # transform to mat4
+        rot = glm.mat4(t1.T)
+        # rotate cameras by 90 degrees because they point on the wrong side
+        rot = glm.rotate(rot, -90 * np.pi / 180, [0, 1, 0])
+
+        cam_rotations.append(rot)
     return cam_rotations
 
 
 def create_cube(width, height, depth):
     "creates a solid with resolution 100x100x100 with the current inputs"
     cube = []
-    for x in np.arange(-width//4, 3*width//4, 32):
-        for y in np.arange(-depth//2, depth//2, 60):
-            for z in np.arange(-height, height, 120):
+    for x in np.arange(-width//4, 3*width//4, 80):
+        for y in np.arange(-depth//2, depth//2, 80):
+            for z in np.arange(-height, height, 80):
                 cube.append([x, y, z])
     return cube
 
