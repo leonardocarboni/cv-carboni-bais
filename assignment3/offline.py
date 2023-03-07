@@ -8,7 +8,6 @@ backgrounds = []
 show = False
 
 
-
 # edges from camera 4, found manually and saved
 edges_cam4 = [(252, 363), (313, 327), (310, 388), (368, 343)]
 
@@ -51,7 +50,7 @@ for camera_i in range(4):
 
     # load intrinsics from assignment 2
     s = cv.FileStorage(
-            f"data/cam{camera_i+1}/config.xml", cv.FileStorage_READ)
+        f"data/cam{camera_i+1}/config.xml", cv.FileStorage_READ)
     camera_matrix = s.getNode('camera_matrix').mat()
     dist_coeffs = s.getNode('dist_coeffs').mat()
     s.release()
@@ -59,30 +58,29 @@ for camera_i in range(4):
         image_points, dtype=np.float32)
     object_points = np.array(
         object_points, dtype=np.float32)
-    
+
     # get extrinsics
     retval_extr, rvec_extr, tvec_extr = cv.solvePnP(
         object_points[0], image_points[0], camera_matrix, dist_coeffs, flags=cv.SOLVEPNP_ITERATIVE)
 
-    # drawing axes 
+    # drawing axes
     vp_axis, _ = cv.projectPoints(
         axis, rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
     frame = draw_axis(img, corners.round().astype(
         np.int32), vp_axis.round().astype(np.int32))
     if show:
         show_image(frame, "Axis on Chessboard")
-    
+
     R, _ = cv.Rodrigues(rvec_extr)
 
-    
-
     # save the config file for the camera
-    s = cv.FileStorage(f"data/cam{camera_i+1}/config.xml", cv.FileStorage_WRITE)
+    s = cv.FileStorage(
+        f"data/cam{camera_i+1}/config.xml", cv.FileStorage_WRITE)
     s.write('camera_matrix', camera_matrix)
     s.write('dist_coeffs', dist_coeffs)
     s.write('tvec_extr', tvec_extr)
     s.write('rvec_extr', rvec_extr)
-    s.write('R_MAT', R) 
+    s.write('R_MAT', R)
     s.release()
 
     # read bacground video
@@ -103,7 +101,7 @@ for camera_i in range(4):
     # masks extraction
     cap = cv.VideoCapture(cameras_videos_info[camera_i][-1])
     all_masks = []
-    for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2): # 2724
+    for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2):  # 2724
         retF, frame = cap.read()
         if retF and i == 1900:
             w, h, _ = frame.shape
@@ -117,17 +115,23 @@ for camera_i in range(4):
                 for y in range(foreground_hsv.shape[1]):
                     if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
                         best_mask[x, y] = 255
-            show_image(best_mask, "MASK")
 
-            # best_mask = cv.morphologyEx(
-            #     best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (2, 2)))
             best_mask = cv.morphologyEx(
-                best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10)))
-            output = cv.bitwise_and(frame, frame, mask=best_mask)
-            all_masks.append(best_mask)
-            show_image(best_mask, "MASK")
-            np.savez(f"data/cam{camera_i+1}/masks", masks=all_masks)
-            break
+                best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (13, 13)))
+            best_mask = cv.morphologyEx(
+                best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
+
+            contours, _ = cv.findContours(
+                best_mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+
+            # Sort the remaining contours by size (largest first)
+            contours = sorted(contours, key=cv.contourArea, reverse=True)[:4]
+
+            result = np.zeros_like(best_mask)
+            cv.fillPoly(result, contours, color=255)
+            all_masks.append(result)
+
+    np.savez(f"data/cam{camera_i+1}/masks", masks=all_masks)
+
     cap.release()
     # np.savez(f"data/cam{camera_i+1}/masks", masks=all_masks)
-        
