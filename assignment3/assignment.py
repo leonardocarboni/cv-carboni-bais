@@ -5,6 +5,7 @@ import cv2 as cv
 from time import time
 import os
 from utils import *
+import matplotlib.pyplot as plt
 
 block_size = 1.0
 n_frame = 0
@@ -12,6 +13,12 @@ visible_voxels = []
 lookup_table = []
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
 labels_to_color = {'0': (255,0,0), '1': (0,255,0), '2': (0, 0, 255), '3': (255, 0, 255)}
+
+cap = cv.VideoCapture(cameras_videos_info[1][2]) # video of camera 2
+w, h = int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(
+        cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+retF, frame = cap.read()
+cap.release()
 
 with np.load('./data/cam1/masks.npz') as file:
     mask1 = file['masks']
@@ -21,6 +28,14 @@ with np.load('./data/cam3/masks.npz') as file:
     mask3 = file['masks']
 with np.load('./data/cam4/masks.npz') as file:
     mask4 = file['masks']
+
+s = cv.FileStorage(
+            f"./data/cam2/config.xml", cv.FileStorage_READ)
+camera_matrix = s.getNode('camera_matrix').mat()
+dist_coeffs = s.getNode('dist_coeffs').mat()
+rvec_extr = s.getNode('rvec_extr').mat()
+tvec_extr = s.getNode('tvec_extr').mat()
+s.release()
 
 
 def generate_grid(width, depth):
@@ -92,12 +107,29 @@ def set_voxel_positions(width, height, depth):
         flags = cv.KMEANS_RANDOM_CENTERS
         voxels_to_cluster = np.array([[x[0], x[2]] for x in visible_voxels], dtype = np.float32)
         compactness, labels, centers = cv.kmeans(
-            voxels_to_cluster, 4, None, criteria, 10, flags)
+            voxels_to_cluster, 4, None, criteria, 20, flags)
         colors = []
         for i, _ in enumerate(visible_voxels):
             label = labels[i][0]
             colors.append(labels_to_color[str(label)])
-        
+        frame_copy = frame.copy()
+        pixels_colors = []
+        color_model = {'0': [], '1': [], '2': [], '3': []}
+        for i_label, vox in enumerate(visible_voxels):
+            x_3D, y_3D, z_3D = (int(vox[0]*75),  int(vox[2]*75), int(-vox[1]*75))
+            # pos = np.where((lookup_table[:, 0, 1] == x) & (lookup_table[:, 1, 1] == y) & (lookup_table[:, 2, 1] == z))
+            # print("hello", pos)
+            # pixels = lookup_table[pos, 3:5, 1]
+            img_points, _ = cv.projectPoints(np.array([x_3D, y_3D, z_3D], dtype = np.float32), rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
+            x, y = (int(img_points.ravel()[0]), int(img_points.ravel()[1])) # x is < 644, y is < 486
+            pixels_colors.append(((x, y), labels[i_label][0], frame[y, x])) # tuple (2d pixel, clustering label, original color)
+        for pc in pixels_colors:
+            cv.circle(frame_copy, pc[0], 2, labels_to_color[str(pc[1])], 2)
+            color_model[str(pc[1])].append(pc[2])
+        # print(color_model)
+        plt.hist(color_model['0'])
+        plt.show()
+        show_image(frame_copy, "silhouttes")
         return visible_voxels, colors
     else:  # a frame other than the first, we perform optimization by only looking at changed pixels
 
@@ -231,7 +263,7 @@ def create_lookup_table(width, height, depth):
 # print(create_lookup_table(1500, 3000, 3000)[1])
 # set_voxel_positions(1500, 3000,3000)
 
-show_image(mask1[0], "jnas")
-show_image(mask2[0], "jnas")
-show_image(mask3[0], "jnas")
-show_image(mask4[0], "jnas")
+# show_image(mask1[0], "jnas")
+# show_image(mask2[0], "jnas")
+# show_image(mask3[0], "jnas")
+# show_image(mask4[0], "jnas")

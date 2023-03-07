@@ -50,7 +50,7 @@ for camera_i in range(4):
 
     # load intrinsics from assignment 2
     s = cv.FileStorage(
-        f"data/cam{camera_i+1}/config.xml", cv.FileStorage_READ)
+            f"./../assignment2/data/cam{camera_i+1}/config.xml", cv.FileStorage_READ)
     camera_matrix = s.getNode('camera_matrix').mat()
     dist_coeffs = s.getNode('dist_coeffs').mat()
     s.release()
@@ -103,7 +103,7 @@ for camera_i in range(4):
     all_masks = []
     for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2):  # 2724
         retF, frame = cap.read()
-        if retF and i == 1900:
+        if retF and i == 0:
             w, h, _ = frame.shape
             frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
             background_pixels_hsv = cv.cvtColor(background, cv.COLOR_BGR2HSV)
