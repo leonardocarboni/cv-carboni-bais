@@ -141,14 +141,25 @@ def set_voxel_positions(width, height, depth):
         for pc in pixels_colors:
             cv.circle(frame_copy, pc[0], 2, labels_to_color[str(pc[1])], 2)
             color_model[str(pc[1])].append(pc[2].tolist())
-        # print(color_model['0']) # list of np array hsv
+        # print(color_model['3']) # list of np array hsv
         if show:
             for person in color_model:
                 MGGs[person] = cv.ml.EM_create()
-                MGGs[person].setClustersNumber(5)
+                MGGs[person].setClustersNumber(3)
                 MGGs[person].trainEM(np.array(color_model[person], dtype = np.float32))
-            print(MGGs['0'].predict2( np.array([120, 26, 97], dtype = np.float32)))
-            show_image(frame_copy, "silhouttes")
+            
+            for person in color_model:
+                loglik1 = 0
+                loglik2 = 0
+                loglik3 = 0
+                loglik4 = 0
+                for pixel in color_model[person]:
+                    loglik1 += MGGs['0'].predict2(np.array(pixel, dtype = np.float32))[0][0]
+                    loglik2 += MGGs['1'].predict2(np.array(pixel, dtype = np.float32))[0][0]
+                    loglik3 += MGGs['2'].predict2(np.array(pixel, dtype = np.float32))[0][0]
+                    loglik4 += MGGs['3'].predict2(np.array(pixel, dtype = np.float32))[0][0]
+                print(person ,loglik1, loglik2, loglik3, loglik4)
+            # show_image(frame_copy, "silhouttes")
         return visible_voxels, colors
     else:  # a frame other than the first, we perform optimization by only looking at changed pixels
 
