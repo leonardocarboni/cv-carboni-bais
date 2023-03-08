@@ -10,7 +10,7 @@ from utils import *
 import matplotlib.pyplot as plt
 
 
-show = False
+show = True
 
 block_size = 1.0
 n_frame = 0
@@ -20,11 +20,12 @@ criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
 labels_to_color = {'0': (255, 0, 0), '1': (0, 255, 0),
                    '2': (0, 0, 255), '3': (255, 0, 255)}
 
-cap = cv.VideoCapture(cameras_videos_info[1][2])  # video of camera 2
-w, h = int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(
-    cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-retF, frame = cap.read()
+cap = cv.VideoCapture(cameras_videos_info[1][2]) # video of camera 2
+retF, frame = cap.read() # get first frame (used for color model)
+frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
 cap.release()
+
+MGGs = {'0': None, '1': None, '2': None, '3': None}
 
 with np.load('./data/cam1/masks.npz') as file:
     mask1 = file['masks']
@@ -35,6 +36,7 @@ with np.load('./data/cam3/masks.npz') as file:
 with np.load('./data/cam4/masks.npz') as file:
     mask4 = file['masks']
 
+# loading parameters of cam2 for color model
 s = cv.FileStorage(
     f"./data/cam2/config.xml", cv.FileStorage_READ)
 camera_matrix = s.getNode('camera_matrix').mat()
@@ -60,6 +62,8 @@ def set_voxel_positions(width, height, depth):
     global n_frame
     global visible_voxels
     global lookup_table
+    global MGGs
+
     start_lookup = time()
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
@@ -133,14 +137,17 @@ def set_voxel_positions(width, height, depth):
             x, y = (int(img_points.ravel()[0]), int(
                 img_points.ravel()[1]))  # x is < 644, y is < 486
             # tuple (2d pixel, clustering label, original color)
-            pixels_colors.append(((x, y), labels[i_label][0], frame[y, x]))
+            pixels_colors.append(((x, y), labels[i_label][0], frame_hsv[y, x]))
         for pc in pixels_colors:
             cv.circle(frame_copy, pc[0], 2, labels_to_color[str(pc[1])], 2)
-            color_model[str(pc[1])].append(pc[2])
-        # print(color_model)
+            color_model[str(pc[1])].append(pc[2].tolist())
+        # print(color_model['0']) # list of np array hsv
         if show:
-            plt.hist(color_model['0'])
-            plt.show()
+            for person in color_model:
+                MGGs[person] = cv.ml.EM_create()
+                MGGs[person].setClustersNumber(5)
+                MGGs[person].trainEM(np.array(color_model[person], dtype = np.float32))
+            print(MGGs['0'].predict2( np.array([120, 26, 97], dtype = np.float32)))
             show_image(frame_copy, "silhouttes")
         return visible_voxels, colors
     else:  # a frame other than the first, we perform optimization by only looking at changed pixels
