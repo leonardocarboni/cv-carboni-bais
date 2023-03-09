@@ -27,7 +27,7 @@ tvecs_extr = []
 
 for i in range(4):
     s = cv.FileStorage(
-        f"./data/cam{i}/config.xml", cv.FileStorage_READ)
+        f"./data/cam{i+1}/config.xml", cv.FileStorage_READ)
     camera_matrixes.append(s.getNode('camera_matrix').mat())
     dist_coeffs.append(s.getNode('dist_coeffs').mat())
     rvecs_extr.append(s.getNode('rvec_extr').mat())
@@ -120,7 +120,7 @@ def get_color_model():
 
     masks = []
     for camera_i in range(4):
-        m = get_mask(frames[camera_i][0], camera_i)
+        m = get_mask(frames[camera_i][cam_to_frame[camera_i]], camera_i)
         masks.append(m)
         if show:
             leo = 0
@@ -129,8 +129,9 @@ def get_color_model():
             # show_image(cv.bitwise_and(frames[camera_i][0], frames[camera_i][0], mask = m))
 
     all_visible_voxels = []
+    all_labels = []
     start_reconstruction = time()
-    for i in range(4): # 4 reconstructions for the 4 frames nedded for the color models
+    for _ in range(4): # 4 reconstructions for the 4 frames nedded for the color models
         visible_voxels = []
         for vox in range(voxel_positions.shape[0]):  # for each voxel id
             flag = True  # the voxel is foreground for all cameras (flag)
@@ -150,22 +151,21 @@ def get_color_model():
         print(f"time to reconstruct all: {time()-start_reconstruction}")
         all_visible_voxels.append(visible_voxels)
 
-    # COLORS
-    voxels_to_cluster = np.array([[x[0], x[2]]
-                                  for x in visible_voxels], dtype=np.float32)
-    compactness, labels, centers = cv.kmeans(
-        voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
-    colors = []
-    for i, _ in enumerate(visible_voxels):
-        label = labels[i][0]
-        colors.append(labels_to_color[label])
+        # COLORS
+        voxels_to_cluster = np.array([[x[0], x[2]]
+                                    for x in visible_voxels], dtype=np.float32)
+        compactness, labels, centers = cv.kmeans(
+            voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
+        all_labels.append(labels) # list of 4 lists, that has all labels for each visible voxel
+    # end of reconstructions
 
-    pixels_colors = []
+    pixels_colors = [] # list of length 4, for each camera its 2d visible pixels, its clustering label and its original color
     color_model = {0: [], 1: [], 2: [], 3: []}
     
-    for i_label, vox in enumerate(visible_voxels):
+    for camera_i, vis_voxs in enumerate(all_visible_voxels):
         imgpoints = []
-        for camera_i in range(4):
+        chosen_frame = cam_to_frame[camera_i]
+        for i_label, vox in enumerate(vis_voxs):
             x_3D, y_3D, z_3D = (
                 int(vox[0]*75),  int(vox[2]*75), int(-vox[1]*75))
             # pos = np.where((lookup_table[:, 0, 1] == x) & (lookup_table[:, 1, 1] == y) & (lookup_table[:, 2, 1] == z))
@@ -176,38 +176,40 @@ def get_color_model():
             x, y = (int(img_points.ravel()[0]), int(
                 img_points.ravel()[1]))  # x is < 644, y is < 486
             # tuple (2d pixel, clustering label, original color)
-            chosen_frame = cam_to_frame[camera_i]
-            imgpoints.append(((x,y), frames[camera_i][chosen_frame][y, x])) # 2d coords, original color
-        pixels_colors.append((imgpoints, labels[i_label][0]))
-    frame_copy = frames[1][0].copy()
-    for pc in pixels_colors:
-        cv.circle(frame_copy, pc[0], 2, labels_to_color[pc[1]], 2)
-        color_model[pc[1]].append(pc[2].tolist())
-        # print(color_model[3]) # list of np array hsv
-        if show:
-            for person in color_model:
-                MGGs[person] = cv.ml.EM_create()
-                MGGs[person].setClustersNumber(3)
-                MGGs[person].trainEM(
-                    np.array(color_model[person], dtype=np.float32))
+            imgpoints.append(((x,y), all_labels[camera_i][i_label][0], frames[camera_i][chosen_frame][y, x])) # 2d coords,clustering label, original color
+        pixels_colors.append(imgpoints)
+        
+    
+    for camera_i, infos in enumerate(pixels_colors):
+        chosen_frame = cam_to_frame[camera_i]
+        frame_copy = frames[camera_i][chosen_frame].copy()
+        for pc in infos:
+            cv.circle(frame_copy, pc[0], 2, labels_to_color[pc[1]], 2)
+            color_model[pc[1]].append(pc[2].tolist())
+            # print(color_model[3]) # list of np array hsv
+        for person in color_model:
+            MGGs[person] = cv.ml.EM_create()
+            MGGs[person].setClustersNumber(3)
+            MGGs[person].trainEM(
+                np.array(color_model[person], dtype=np.float32))
 
-            for person in color_model:
-                loglik1 = 0
-                loglik2 = 0
-                loglik3 = 0
-                loglik4 = 0
-                for pixel in color_model[person]:
-                    loglik1 += MGGs[0].predict2(np.array(pixel,
-                                                        dtype=np.float32))[0][0]
-                    loglik2 += MGGs[1].predict2(np.array(pixel,
-                                                        dtype=np.float32))[0][0]
-                    loglik3 += MGGs[2].predict2(np.array(pixel,
-                                                        dtype=np.float32))[0][0]
-                    loglik4 += MGGs[3].predict2(np.array(pixel,
-                                                        dtype=np.float32))[0][0]
-                print(person, loglik1, loglik2, loglik3, loglik4)
-            show_image(frame_copy, "silhouttes")
-    return visible_voxels, colors, MGGs
+        for person in color_model:
+            loglik1 = 0
+            loglik2 = 0
+            loglik3 = 0
+            loglik4 = 0
+            for pixel in color_model[person]:
+                loglik1 += MGGs[0].predict2(np.array(pixel,
+                                                    dtype=np.float32))[0][0]
+                loglik2 += MGGs[1].predict2(np.array(pixel,
+                                                    dtype=np.float32))[0][0]
+                loglik3 += MGGs[2].predict2(np.array(pixel,
+                                                    dtype=np.float32))[0][0]
+                loglik4 += MGGs[3].predict2(np.array(pixel,
+                                                    dtype=np.float32))[0][0]
+            print(person, loglik1, loglik2, loglik3, loglik4)
+        show_image(frame_copy, "silhouttes")
+    return visible_voxels, MGGs
 
 
 def start_online(MGGs):
@@ -346,6 +348,6 @@ for camera_i in range(4):
     background = average_images(imgs_list_background)
     backgrounds.append(background)
 
-MGGs = get_color_model()[2]
+MGGs = get_color_model()[1]
 
-start_online(MGGs)
+start_online(MGGs)  
