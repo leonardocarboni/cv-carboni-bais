@@ -103,7 +103,7 @@ for camera_i in range(4):
     all_masks = []
     for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2):  # 2724
         retF, frame = cap.read()
-        if retF and i == 0:
+        if retF and i % 10 == 0:
             w, h, _ = frame.shape
             frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
             background_pixels_hsv = cv.cvtColor(background, cv.COLOR_BGR2HSV)
@@ -129,9 +129,12 @@ for camera_i in range(4):
 
             result = np.zeros_like(best_mask)
             cv.fillPoly(result, contours, color=255)
+            # show_image(result)
             all_masks.append(result)
 
     np.savez(f"data/cam{camera_i+1}/masks", masks=all_masks)
 
     cap.release()
     # np.savez(f"data/cam{camera_i+1}/masks", masks=all_masks)
+
+{0 : 10, 1: 0, 2:41, 3: 52}
