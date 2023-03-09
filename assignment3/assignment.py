@@ -14,11 +14,10 @@ show = True
 
 block_size = 1.0
 n_frame = 0
-visible_voxels = []
 lookup_table = []
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-labels_to_color = {'0': (255, 0, 0), '1': (0, 255, 0),
-                   '2': (0, 0, 255), '3': (255, 0, 255)}
+labels_to_color = {0: (255, 0, 0), 1: (0, 255, 0),
+                   2: (0, 0, 255), 3: (255, 0, 255)}
 
 cap = cv.VideoCapture(cameras_videos_info[1][2]) # video of camera 2
 retF, frame = cap.read() # get first frame (used for color model)
@@ -26,15 +25,12 @@ frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
 cap.release()
 
 MGGs = {'0': None, '1': None, '2': None, '3': None}
+cam_to_frame = {0 : 10, 1: 0, 2:41, 3: 52}
 
-with np.load('./data/cam1/masks.npz') as file:
-    mask1 = file['masks']
-with np.load('./data/cam2/masks.npz') as file:
-    mask2 = file['masks']
-with np.load('./data/cam3/masks.npz') as file:
-    mask3 = file['masks']
-with np.load('./data/cam4/masks.npz') as file:
-    mask4 = file['masks']
+masks_all_frames = []
+for i in range(4):
+    with np.load(f'./data/cam{i+1}/masks.npz') as file:
+        masks_all_frames.append(file['masks'])
 
 # loading parameters of cam2 for color model
 s = cv.FileStorage(
@@ -45,6 +41,35 @@ rvec_extr = s.getNode('rvec_extr').mat()
 tvec_extr = s.getNode('tvec_extr').mat()
 s.release()
 
+def get_mask(frame, camera_i):
+
+    w, h, _ = frame.shape
+    frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+    background_pixels_hsv = cv.cvtColor(
+        backgrounds[camera_i], cv.COLOR_BGR2HSV)
+    foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
+
+    hue, saturation, value = best_masks[str(camera_i+1)]
+    best_mask = np.zeros((w, h), dtype=np.uint8)
+    for x in range(foreground_hsv.shape[0]):
+        for y in range(foreground_hsv.shape[1]):
+            if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
+                best_mask[x, y] = 255
+
+    best_mask = cv.morphologyEx(
+        best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (13, 13)))
+    best_mask = cv.morphologyEx(
+        best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
+
+    contours, _ = cv.findContours(
+        best_mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+
+    # Sort the remaining contours by size (largest first)
+    contours = sorted(contours, key=cv.contourArea, reverse=True)[:4]
+
+    result = np.zeros_like(best_mask)
+    cv.fillPoly(result, contours, color=255)
+    return result
 
 def generate_grid(width, depth):
     # Generates the floor grid locations
@@ -67,16 +92,11 @@ def set_voxel_positions(width, height, depth):
     for camera_i in range(4):
         m = get_mask(frames[camera_i][cam_to_frame[camera_i]], camera_i)
         masks.append(m)
-        if show:
-            leo = 0
-            # show_image(m)
-            # show_image(frames[camera_i][0])
-            # show_image(cv.bitwise_and(frames[camera_i][0], frames[camera_i][0], mask = m))
 
     all_visible_voxels = []
     all_labels = []
     start_reconstruction = time()
-    for _ in range(4): # 4 reconstructions for the 4 frames nedded for the color models
+    for i in range(4): # 4 reconstructions for the 4 frames nedded for the color models
         visible_voxels = []
         for vox in range(voxel_positions.shape[0]):  # for each voxel id
             flag = True  # the voxel is foreground for all cameras (flag)
@@ -86,7 +106,8 @@ def set_voxel_positions(width, height, depth):
                 x = int(x)
                 y = int(y)
                 # check if the pixel is foreground for all cameras
-                if masks[camera_i][y, x] == 0:
+                mask = masks_all_frames[camera_i][cam_to_frame[i]]
+                if mask[y, x] == 0:
                     flag = False
 
             if flag:  # if it is foreground for all cameras
@@ -97,16 +118,18 @@ def set_voxel_positions(width, height, depth):
         all_visible_voxels.append(visible_voxels)
 
         # COLORS
-        colors = []
-        for i, _ in enumerate(visible_voxels):
-            label = labels[i][0]
-            colors.append(labels_to_color[str(label)])
-            
+        
+
         voxels_to_cluster = np.array([[x[0], x[2]]
                                     for x in visible_voxels], dtype=np.float32)
         compactness, labels, centers = cv.kmeans(
             voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
         all_labels.append(labels) # list of 4 lists, that has all labels for each visible voxel
+        colors = []
+        for i, _ in enumerate(visible_voxels):
+            label = labels[i][0]
+            colors.append(labels_to_color[label])
+        break
     # end of reconstructions
 
     pixels_colors = [] # list of length 4, for each camera its 2d visible pixels, its clustering label and its original color
@@ -130,37 +153,36 @@ def set_voxel_positions(width, height, depth):
         pixels_colors.append(imgpoints)
         
     
-    for camera_i, infos in enumerate(pixels_colors):
-        chosen_frame = cam_to_frame[camera_i]
-        frame_copy = frames[camera_i][chosen_frame].copy()
-        for pc in infos:
-            cv.circle(frame_copy, pc[0], 2, labels_to_color[pc[1]], 2)
-            color_model[pc[1]].append(pc[2].tolist())
-            # print(color_model[3]) # list of np array hsv
-        for person in color_model:
-            MGGs[person] = cv.ml.EM_create()
-            MGGs[person].setClustersNumber(3)
-            MGGs[person].trainEM(
-                np.array(color_model[person], dtype=np.float32))
+    # for camera_i, infos in enumerate(pixels_colors):
+    #     chosen_frame = cam_to_frame[camera_i]
+    #     frame_copy = frames[camera_i][chosen_frame].copy()
+    #     for pc in infos:
+    #         cv.circle(frame_copy, pc[0], 2, labels_to_color[pc[1]], 2)
+    #         color_model[pc[1]].append(pc[2].tolist())
+    #         # print(color_model[3]) # list of np array hsv
+    #     for person in color_model:
+    #         MGGs[person] = cv.ml.EM_create()
+    #         MGGs[person].setClustersNumber(3)
+    #         MGGs[person].trainEM(
+    #             np.array(color_model[person], dtype=np.float32))
 
-        for person in color_model:
-            loglik1 = 0
-            loglik2 = 0
-            loglik3 = 0
-            loglik4 = 0
-            for pixel in color_model[person]:
-                loglik1 += MGGs[0].predict2(np.array(pixel,
-                                                    dtype=np.float32))[0][0]
-                loglik2 += MGGs[1].predict2(np.array(pixel,
-                                                    dtype=np.float32))[0][0]
-                loglik3 += MGGs[2].predict2(np.array(pixel,
-                                                    dtype=np.float32))[0][0]
-                loglik4 += MGGs[3].predict2(np.array(pixel,
-                                                    dtype=np.float32))[0][0]
-            print(person, loglik1, loglik2, loglik3, loglik4)
-        show_image(frame_copy, "silhouttes")
-    return visible_voxels, MGGs
-        return visible_voxels, colors
+    #     for person in color_model:
+    #         loglik1 = 0
+    #         loglik2 = 0
+    #         loglik3 = 0
+    #         loglik4 = 0
+    #         for pixel in color_model[person]:
+    #             loglik1 += MGGs[0].predict2(np.array(pixel,
+    #                                                 dtype=np.float32))[0][0]
+    #             loglik2 += MGGs[1].predict2(np.array(pixel,
+    #                                                 dtype=np.float32))[0][0]
+    #             loglik3 += MGGs[2].predict2(np.array(pixel,
+    #                                                 dtype=np.float32))[0][0]
+    #             loglik4 += MGGs[3].predict2(np.array(pixel,
+    #                                                 dtype=np.float32))[0][0]
+    #         print(person, loglik1, loglik2, loglik3, loglik4)
+    #     show_image(frame_copy, "silhouttes")
+    return visible_voxels, colors
 
 
 def get_cam_positions():
@@ -216,7 +238,7 @@ def get_cam_rotation_matrices():
 def create_cube(width, height, depth):
     "creates a solid with resolution 100x100x100 with the current inputs"
     cube = []
-    for x in np.arange(-width//4, 3*width//4, 80):
+    for x in np.arange(-width, width, 80):
         for y in np.arange(-depth//2, depth//2, 80):
             for z in np.arange(-height, height, 80):
                 cube.append([x, y, z])
@@ -263,3 +285,53 @@ def create_lookup_table(width, height, depth):
 # show_image(mask2[0], "jnas")
 # show_image(mask3[0], "jnas")
 # show_image(mask4[0], "jnas")
+camera_matrixes = []
+dist_coeffs = []
+rvecs_extr = []
+tvecs_extr = []
+
+for i in range(4):
+    s = cv.FileStorage(
+        f"./data/cam{i+1}/config.xml", cv.FileStorage_READ)
+    camera_matrixes.append(s.getNode('camera_matrix').mat())
+    dist_coeffs.append(s.getNode('dist_coeffs').mat())
+    rvecs_extr.append(s.getNode('rvec_extr').mat())
+    tvecs_extr.append(s.getNode('tvec_extr').mat())
+    s.release()
+
+start_lookup = time()
+exists = os.path.isfile('./data/lookup_table.npz')
+if exists:  # if lookup table already exists, load it
+    with np.load(f'./data/lookup_table.npz') as file:
+        lookup_table = file['lookup_table']
+    voxel_positions = np.array(create_cube(
+        3000, 6000, 6000), dtype=np.float32)
+    print(f"time to load/create lookup table: {time()-start_lookup}")
+else:  # if it does not, create it and save the file
+    voxel_positions, lookup_table = create_lookup_table(
+        3000, 6000, 6000)
+    print(f"time to load/create lookup table: {time()-start_lookup}")
+
+frames = []
+backgrounds = []
+for camera_i in range(4):
+    # FOR EVERY FRAME OF THE VIDEO (5 frames per sec)
+    frames_c = []
+    cap = cv.VideoCapture(cameras_videos_info[camera_i][2])
+    for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2):
+        retF, frame = cap.read()  # get first frame (used for color model)
+        if i % 10 == 0:
+            frames_c.append(frame)
+    frames.append(frames_c)
+    cap.release()
+
+    cap = cv.VideoCapture(cameras_videos_info[camera_i][0])
+    w, h = int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(
+        cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+    n_frames_background = 40
+    imgs_list_background = [cap.read()[1] for i in range(n_frames_background)]
+    cap.release()
+
+    # get average of baground
+    background = average_images(imgs_list_background)
+    backgrounds.append(background)

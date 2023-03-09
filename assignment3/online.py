@@ -25,6 +25,11 @@ dist_coeffs = []
 rvecs_extr = []
 tvecs_extr = []
 
+masks_all_frames = []
+for i in range(4):
+    with np.load(f'./data/cam{i+1}/masks.npz') as file:
+        masks_all_frames.append(file['masks'])
+
 for i in range(4):
     s = cv.FileStorage(
         f"./data/cam{i+1}/config.xml", cv.FileStorage_READ)
@@ -122,16 +127,11 @@ def get_color_model():
     for camera_i in range(4):
         m = get_mask(frames[camera_i][cam_to_frame[camera_i]], camera_i)
         masks.append(m)
-        if show:
-            leo = 0
-            # show_image(m)
-            # show_image(frames[camera_i][0])
-            # show_image(cv.bitwise_and(frames[camera_i][0], frames[camera_i][0], mask = m))
 
     all_visible_voxels = []
     all_labels = []
     start_reconstruction = time()
-    for _ in range(4): # 4 reconstructions for the 4 frames nedded for the color models
+    for i in range(4): # 4 reconstructions for the 4 frames nedded for the color models
         visible_voxels = []
         for vox in range(voxel_positions.shape[0]):  # for each voxel id
             flag = True  # the voxel is foreground for all cameras (flag)
@@ -141,7 +141,8 @@ def get_color_model():
                 x = int(x)
                 y = int(y)
                 # check if the pixel is foreground for all cameras
-                if masks[camera_i][y, x] == 0:
+                mask = masks_all_frames[camera_i][cam_to_frame[i]]
+                if mask[y, x] == 0:
                     flag = False
 
             if flag:  # if it is foreground for all cameras
@@ -351,3 +352,5 @@ for camera_i in range(4):
 MGGs = get_color_model()[1]
 
 start_online(MGGs)  
+
+#TODO: build 16 models, and calcualte a golbal loglik to choose the best guess for each pixel corresponding to each person.
