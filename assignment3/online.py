@@ -287,9 +287,12 @@ def reconstruct_voxels():
 
 def get_color_model_2():
     global lookup_table
-    mgg_list = [{0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}]
-    person_to_colors = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}]
-    histograms = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}]
+    mgg_list = [{0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None},
+                {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}]
+    person_to_colors = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []},
+                        {0: [], 1: [], 2: [], 3: []}]
+    histograms = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []},
+                  {0: [], 1: [], 2: [], 3: []}]
 
     all_visible_voxels, all_labels = reconstruct_voxels()
 
@@ -323,44 +326,69 @@ def get_color_model_2():
         # for each person
         for pixel, label, color in pixels_color:
             # if the pixel is of the current person
-
-                person_to_colors[i_camera][label].append(pixel)
+            person_to_colors[i_camera][label].append(pixel)
 
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
 
-    # for each camera
-    print(person_to_colors[0][0])
-    print(person_to_colors[1][0])
     for i_camera, cameras in enumerate(person_to_colors):
         # for each person
         for person in cameras:
             # calculate the histogram
             pixels = cameras[person]
-            pixels = [(x[1], x[0]) for x in pixels]
+
             mask = np.zeros(frames[i_camera][cam_to_frame[i_camera]].shape[:2], np.uint8)
-            for y, x in pixels:
-                mask[y, x] = 255
-            output = cv.bitwise_and(frames[i_camera][cam_to_frame[i_camera]], frames[i_camera][cam_to_frame[i_camera]], mask = mask)
-            show_image(output)
-            # parameters: image, channels, mask, histSize, ranges
+
+            waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
+
+            for x, y in pixels:
+                if y < waist:
+                    mask[y, x] = 255
+
+            show_image(mask, "mask")
+
             hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0, 1, 2], mask, [8, 8, 8],
                                [0, 256, 0, 256, 0, 256])
 
             # normalize the histogram
             hist = cv.normalize(hist, hist).flatten()
 
-            # plt.plot(hist)
-            # plt.title("Normalized Histogram")
-            # plt.show()
-
             histograms[i_camera][person] = hist
 
-    
-    for i_camera, pixels_color in enumerate(pixels_colors):
+    # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
+
+    # dictionary that for each camera tells us the person with the highest similarity
+    best_person = [{0: (0, 1), 1: (1, 1), 2: (2, 1), 3: (3, 1)},  # identity
+                   {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
+                   {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
+                   {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}]
+
+    right_dictionary = histograms[0]
+
+    for i_camera in range(len(histograms)):
+        for person0 in right_dictionary:
+            for person in best_person[i_camera]:
+                similarity = cv.compareHist(histograms[i_camera][person], right_dictionary[person0],
+                                            cv.HISTCMP_INTERSECT)
+                if i_camera > 0:
+                    if similarity > best_person[i_camera][person][1]:
+                        best_person[i_camera][person] = (person0, similarity)
+
+    # AT THIS POINT WE HAVE THE BEST PERSON FOR EACH CAMERA
+
+    for i_camera in range(4):
         frame_copy = frames[i_camera][cam_to_frame[i_camera]].copy()
-        for pixel, label, color in pixels_color:
+        frame_copy_right = frames[i_camera][cam_to_frame[i_camera]].copy()
+        for pixel, label, color in pixels_colors[i_camera]:
             cv.circle(frame_copy, pixel, 3, labels_to_color[label], -1)
-        show_image(frame_copy, "frame")
+            cv.circle(frame_copy_right, pixel, 3, labels_to_color[best_person[i_camera][label][0]], -1)
+        show_image(frame_copy, "auto")
+        show_image(frame_copy_right, "right")
+
+    # for i_camera, pixels_color in enumerate(pixels_colors):
+    #     frame_copy = frames[i_camera][cam_to_frame[i_camera]].copy()
+    #     for pixel, label, color in pixels_color:
+    #         cv.circle(frame_copy, pixel, 3, labels_to_color[label], -1)
+    #     show_image(frame_copy, "frame")
 
 
 def start_online(MGGs):
