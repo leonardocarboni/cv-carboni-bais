@@ -3,6 +3,8 @@ import cv2 as cv
 from utils import *
 from time import time
 import os
+import matplotlib.pyplot as plt
+from scipy.spatial import distance
 
 # TODO: Voxel space più grosso
 # TODO: Finire implementazione lables corrette
@@ -117,16 +119,21 @@ def create_lookup_table(width, height, depth):
     np.savez('data/lookup_table', lookup_table=lookup_table)
     return voxel_positions, lookup_table
 
+def get_histogram(colors):
+    channel_1 = [x[0] for x in colors]
+    channel_2 = [x[1] for x in colors]
+    channel_3 = [x[2] for x in colors]
+    data = [channel_1, channel_2, channel_3]
+    plt.hist(channel_1, bins = 64, color = "b")
+    plt.hist(channel_2, bins = 64,color = "g")
+    plt.hist(channel_3, bins = 64,color = "r")
+    plt.show()
+    return data
 
 def get_color_model():
     global lookup_table
-    MGGs = {0: None, 1: None, 2: None, 3: None}
+    MGGs = [{0: None, 1: None, 2: None, 3: None}]*4
     # global frames
-
-    masks = []
-    for camera_i in range(4):
-        m = get_mask(frames[camera_i][cam_to_frame[camera_i]], camera_i)
-        masks.append(m)
 
     all_visible_voxels = []
     all_labels = []
@@ -161,17 +168,14 @@ def get_color_model():
     # end of reconstructions
 
     pixels_colors = [] # list of length 4, for each camera its 2d visible pixels, its clustering label and its original color
-    color_model = {0: [], 1: [], 2: [], 3: []}
-    
+    person_to_colors = [{0: [], 1: [], 2: [], 3: []}]*4
+    histograms = [{0: [], 1: [], 2: [], 3: []}]*4
     for camera_i, vis_voxs in enumerate(all_visible_voxels):
         imgpoints = []
         chosen_frame = cam_to_frame[camera_i]
         for i_label, vox in enumerate(vis_voxs):
             x_3D, y_3D, z_3D = (
                 int(vox[0]*75),  int(vox[2]*75), int(-vox[1]*75))
-            # pos = np.where((lookup_table[:, 0, 1] == x) & (lookup_table[:, 1, 1] == y) & (lookup_table[:, 2, 1] == z))
-            # print("hello", pos)
-            # pixels = lookup_table[pos, 3:5, 1]
             img_points, _ = cv.projectPoints(np.array(
                 [x_3D, y_3D, z_3D], dtype=np.float32), rvecs_extr[camera_i], tvecs_extr[camera_i], camera_matrixes[camera_i], dist_coeffs[camera_i])
             x, y = (int(img_points.ravel()[0]), int(
@@ -179,52 +183,80 @@ def get_color_model():
             # tuple (2d pixel, clustering label, original color)
             imgpoints.append(((x,y), all_labels[camera_i][i_label][0], frames[camera_i][chosen_frame][y, x])) # 2d coords,clustering label, original color
         pixels_colors.append(imgpoints)
+    # print(pixels_colors[0][0], pixels_colors[0][1], pixels_colors[0][2])
+    # print("-----------------")
+    # print(pixels_colors[1][0], pixels_colors[1][1], pixels_colors[1][2])
         
-    
+    print(person_to_colors)
+    print("-----------")
     for camera_i, infos in enumerate(pixels_colors):
         chosen_frame = cam_to_frame[camera_i]
         frame_copy = frames[camera_i][chosen_frame].copy()
-        for pc in infos:
+        for point_i, pc in enumerate(infos):
+            # if (camera_i == 0 or camera_i == 1) and pc[1] == 0:
+            #     print(camera_i , pc)
             cv.circle(frame_copy, pc[0], 2, labels_to_color[pc[1]], 2)
-            color_model[pc[1]].append(pc[2].tolist())
-            # print(color_model[3]) # list of np array hsv
-        for person in color_model:
-            MGGs[person] = cv.ml.EM_create()
-            MGGs[person].setClustersNumber(3)
-            MGGs[person].trainEM(
-                np.array(color_model[person], dtype=np.float32))
+            person_to_colors[0][pc[1]].append(pc[2].tolist())
+            if point_i > 1000 and point_i < 1020:
+                print('--------------')
+                print(person_to_colors[0][0])
+                print(person_to_colors[1][0])
+        # print(person_to_colors)
+        # print(person_to_colors[0][0])
+        # print("-----------")
+        # print(person_to_colors[1][0])
+        for person in person_to_colors[camera_i]:
+            print("person " , person)
+            print("camera ", camera_i)
+            histograms[camera_i][person] = get_histogram(person_to_colors[camera_i][person]) # store a 3XN matrix
+            # print(histograms[camera_i][person])
+            # print("------------------------------")
+        #     MGGs[camera_i][person] = cv.ml.EM_create()
+        #     MGGs[camera_i][person].setClustersNumber(3)
+        #     MGGs[camera_i][person].trainEM(
+        #         np.array(person_to_colors[camera_i][person], dtype=np.float32))
 
-        for person in color_model:
-            loglik1 = 0
-            loglik2 = 0
-            loglik3 = 0
-            loglik4 = 0
-            for pixel in color_model[person]:
-                loglik1 += MGGs[0].predict2(np.array(pixel,
-                                                    dtype=np.float32))[0][0]
-                loglik2 += MGGs[1].predict2(np.array(pixel,
-                                                    dtype=np.float32))[0][0]
-                loglik3 += MGGs[2].predict2(np.array(pixel,
-                                                    dtype=np.float32))[0][0]
-                loglik4 += MGGs[3].predict2(np.array(pixel,
-                                                    dtype=np.float32))[0][0]
-            print(person, loglik1, loglik2, loglik3, loglik4)
+        # for person in person_to_colors[camera_i]:
+        #     logliks = np.zeros(4)
+        #     for pixel in person_to_colors[camera_i][person]:
+        #         logliks[0] += MGGs[camera_i][0].predict2(np.array(pixel,
+        #                                             dtype=np.float32))[0][0]
+        #         logliks[1] += MGGs[camera_i][1].predict2(np.array(pixel,
+        #                                             dtype=np.float32))[0][0]
+        #         logliks[2] += MGGs[camera_i][2].predict2(np.array(pixel,
+        #                                             dtype=np.float32))[0][0]
+        #         logliks[3] += MGGs[camera_i][3].predict2(np.array(pixel,
+        #                                             dtype=np.float32))[0][0]
+        #     print(person, np.argmax(logliks))
+        
         show_image(frame_copy, "silhouttes")
+    for camera_hist in histograms:
+            for person_hist in camera_hist:
+                # print(histograms[0][person_hist][0])
+                # print("--------------")
+                # print(histograms[1][person_hist][0])
+                channel1_distance = np.corrcoef(histograms[0][person_hist][0], histograms[1][person_hist][0])
+                channel2_distance = np.corrcoef(histograms[0][person_hist][1], histograms[1][person_hist][1])
+                channel3_distance = np.corrcoef(histograms[0][person_hist][2], histograms[1][person_hist][2])
+                print(channel1_distance)
+                print(channel2_distance)
+                print(channel3_distance)
+                print(channel3_distance+channel1_distance+channel2_distance)
     return visible_voxels, MGGs
 
 
 def start_online(MGGs):
     # for each frame we considered
     for n_frame in range(0, len(frames[0]), 10):
-        masks = []
-        for camera_i in range(4):
-            m = get_mask(frames[camera_i][n_frame], camera_i)
-            masks.append(m)
-            if show:
-                a = 3
-                # show_image(m)
-                # show_image(frames[camera_i][n_frame])
-                #show_image(cv.bitwise_and(frames[camera_i][n_frame], frames[camera_i][n_frame], mask = m))
+        # masks = []
+        # for camera_i in range(4):
+        #     m = get_mask(frames[camera_i][n_frame], camera_i)
+        #     masks.append(m)
+        #     if show:
+        #         a = 3
+        #         # show_image(m)
+        #         # show_image(frames[camera_i][n_frame])
+        #         #show_image(cv.bitwise_and(frames[camera_i][n_frame], frames[camera_i][n_frame], mask = m))
         visible_voxels = []
         start_reconstruction = time()
 
@@ -236,7 +268,8 @@ def start_online(MGGs):
                 x = int(x)
                 y = int(y)
                 # check if the pixel is foreground for all cameras
-                if masks[camera_i][y, x] == 0:
+                mask = masks_all_frames[camera_i][n_frame]
+                if mask[y, x] == 0:
                     flag = False
 
             if flag:  # if it is foreground for all cameras
@@ -250,46 +283,62 @@ def start_online(MGGs):
                                       for x in visible_voxels], dtype=np.float32)
         compactness, labels, centers = cv.kmeans(
             voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
-        clusters_to_tracking(centers, labels)
+        
         pixels_colors = []
-        color_model = {0: [], 1: [], 2: [], 3: []}
-        for i_label, vox in enumerate(visible_voxels):
-            x_3D, y_3D, z_3D = (
-                int(vox[0]*75),  int(vox[2]*75), int(-vox[1]*75))
-            img_points, _ = cv.projectPoints(np.array(
-                [x_3D, y_3D, z_3D], dtype=np.float32), rvec_extr, tvec_extr, camera_matrix, dist_coeffs)
-            x, y = (int(img_points.ravel()[0]), int(
-                img_points.ravel()[1]))  # x is < 644, y is < 486
-            # tuple (2d pixel, clustering label, original color)
-            pixels_colors.append(
-                ((x, y), labels[i_label][0], frames[1][n_frame][y, x]))
-        for pc in pixels_colors:
-            color_model[pc[1]].append(pc[2].tolist())
-        correct_labels = np.zeros(4)
-        for person in color_model:
-            logliks = np.zeros(4)
-            for pixel in color_model[person]:
-                logliks[0] += MGGs[0].predict2(np.array(pixel,
-                                                          dtype=np.float32))[0][0]
-                logliks[1] += MGGs[1].predict2(np.array(pixel,
-                                                          dtype=np.float32))[0][0]
-                logliks[2] += MGGs[2].predict2(np.array(pixel,
-                                                          dtype=np.float32))[0][0]
-                logliks[3] += MGGs[3].predict2(np.array(pixel,
-                                                          dtype=np.float32))[0][0]
-            correct_labels[int(person)] = np.argmax(
-                logliks)  # current label to true label
-        frame_copy = frames[1][n_frame].copy()
-        frame_copy2 = frames[1][n_frame].copy()
-        for pc in pixels_colors:
+        color_model = [{0: [], 1: [], 2: [], 3: []}]*4
+        correct_labels = np.zeros((4,4), dtype = tuple)
+        for camera_i in range(4):
+            imgpoints = []
+            for i_label, vox in enumerate(visible_voxels):
+                x_3D, y_3D, z_3D = (
+                    int(vox[0]*75),  int(vox[2]*75), int(-vox[1]*75))
+                img_points, _ = cv.projectPoints(np.array(
+                    [x_3D, y_3D, z_3D], dtype=np.float32), rvecs_extr[camera_i], tvecs_extr[camera_i], camera_matrixes[camera_i], dist_coeffs[camera_i])
+                x, y = (int(img_points.ravel()[0]), int(
+                    img_points.ravel()[1]))  # x is < 644, y is < 486
+                # tuple (2d pixel, clustering label, original color)
+                imgpoints.append(
+                    ((x, y), labels[i_label][0], frames[camera_i][n_frame][y, x]))
+            pixels_colors.append(imgpoints)
+            for pc in pixels_colors[camera_i]:
+                color_model[camera_i][pc[1]].append(pc[2].tolist())
+            for person in color_model[camera_i]:
+                logliks = np.zeros(4)
+                for pixel in color_model[camera_i][person]:
+                    logliks[0] += MGGs[camera_i][0].predict2(np.array(pixel,
+                                                            dtype=np.float32))[0][0]
+                    logliks[1] += MGGs[camera_i][1].predict2(np.array(pixel,
+                                                            dtype=np.float32))[0][0]
+                    logliks[2] += MGGs[camera_i][2].predict2(np.array(pixel,
+                                                            dtype=np.float32))[0][0]
+                    logliks[3] += MGGs[camera_i][3].predict2(np.array(pixel,
+                                                            dtype=np.float32))[0][0]
+                print(logliks)
+                correct_labels[camera_i][person] = (np.argmax(logliks), np.max(logliks)) # store the best score for each person and for each camera (16 guesses)
+        
+            
+        final_labels = np.zeros(4)
+        print("correct_label", correct_labels)
+        for i in range(4):
+            all_logliks = [x[1] for x in correct_labels[:, i]] # 4 different scores for person i, one for each camera
+            best_guess = np.argmax(all_logliks) # which camera had the most confident guess
+            print("best guess: ", best_guess)
+            # print(np.where(correct_labels[best_guess] == correct_labels[best_guess, i]))
+            final_labels[i] =  correct_labels[best_guess, i][0]
+        print(final_labels)
+
+        frame_copy = frames[best_guess][n_frame].copy()
+        frame_copy2 = frames[best_guess][n_frame].copy()
+        for pc in pixels_colors[best_guess]:
             current_label = pc[1]
-            offline_label = int(correct_labels[current_label])
+            offline_label = final_labels[current_label]
             color = labels_to_color[offline_label]
             online_color = labels_to_color[int(current_label)]
             cv.circle(frame_copy, pc[0], 2, color, 2)
             cv.circle(frame_copy2, pc[0], 2, online_color, 2)
         show_image(frame_copy, "silhouttes")
         show_image(frame_copy2, "silhouttes")
+        clusters_to_tracking(centers, final_labels)
     return
 
 
@@ -307,9 +356,9 @@ def clusters_to_tracking(centers, labels):
         x = int(x)+64
         y = int(y)+64
         last_points.append((x, y))
-        plane[y, x] = labels_to_color[i]
+        plane[y, x] = labels_to_color[labels[i]]
         if len(older) != 0:
-            cv.line(plane, (x, y), older[i], color=labels_to_color[i])
+            cv.line(plane, (x, y), older[i], color=labels_to_color[labels[i]])
     show_image(plane, "silhouttes")
 
 
