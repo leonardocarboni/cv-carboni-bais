@@ -321,22 +321,26 @@ def get_color_model_2():
     # for each camera
     for i_camera, pixels_color in enumerate(pixels_colors):
         # for each person
-        for i_person in range(4):
-            # for each pixel
-            for pixel, label, color in pixels_color:
-                # if the pixel is of the current person
-                if label == i_person:
-                    person_to_colors[i_camera][i_person].append(pixel)
+        for pixel, label, color in pixels_color:
+            # if the pixel is of the current person
+                person_to_colors[i_camera][label].append(pixel)
 
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
 
     # for each camera
+    print(person_to_colors[0][0])
+    print(person_to_colors[1][0])
     for i_camera, cameras in enumerate(person_to_colors):
         # for each person
-        for i_person, person in enumerate(cameras):
+        for person in cameras:
             # calculate the histogram
+            pixels = cameras[person]
+            pixels = [(x[1], x[0]) for x in pixels]
             mask = np.zeros(frames[i_camera][cam_to_frame[i_camera]].shape[:2], np.uint8)
-            mask[person] = 255
+            for y, x in pixels:
+                mask[y, x] = 255
+            output = cv.bitwise_and(frames[i_camera][cam_to_frame[i_camera]], frames[i_camera][cam_to_frame[i_camera]], mask = mask)
+            show_image(output)
             # parameters: image, channels, mask, histSize, ranges
             hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0, 1, 2], mask, [8, 8, 8],
                                [0, 256, 0, 256, 0, 256])
@@ -348,7 +352,7 @@ def get_color_model_2():
             plt.title("Normalized Histogram")
             plt.show()
 
-            histograms[i_camera][i_person] = hist
+            histograms[i_camera][person] = hist
 
     for i_camera, pixels_color in enumerate(pixels_colors):
         frame_copy = frames[i_camera][cam_to_frame[i_camera]].copy()
