@@ -8,6 +8,8 @@
 
 /assignment3/data/lookup_table.npz
 
+.idea/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
