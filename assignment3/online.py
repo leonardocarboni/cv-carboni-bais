@@ -287,9 +287,9 @@ def reconstruct_voxels():
 
 def get_color_model_2():
     global lookup_table
-    mgg_list = [{0: None, 1: None, 2: None, 3: None}] * 4
-    person_to_colors = [{0: [], 1: [], 2: [], 3: []}] * 4
-    histograms = [{0: [], 1: [], 2: [], 3: []}] * 4
+    mgg_list = [{0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}]
+    person_to_colors = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}]
+    histograms = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}]
 
     all_visible_voxels, all_labels = reconstruct_voxels()
 
@@ -323,6 +323,7 @@ def get_color_model_2():
         # for each person
         for pixel, label, color in pixels_color:
             # if the pixel is of the current person
+
                 person_to_colors[i_camera][label].append(pixel)
 
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
@@ -348,12 +349,13 @@ def get_color_model_2():
             # normalize the histogram
             hist = cv.normalize(hist, hist).flatten()
 
-            plt.plot(hist)
-            plt.title("Normalized Histogram")
-            plt.show()
+            # plt.plot(hist)
+            # plt.title("Normalized Histogram")
+            # plt.show()
 
             histograms[i_camera][person] = hist
 
+    
     for i_camera, pixels_color in enumerate(pixels_colors):
         frame_copy = frames[i_camera][cam_to_frame[i_camera]].copy()
         for pixel, label, color in pixels_color:
