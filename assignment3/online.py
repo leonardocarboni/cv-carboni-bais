@@ -1,19 +1,19 @@
 import os
 from time import time
 
+import matplotlib
 import matplotlib.pyplot as plt
 
 from utils import *
 
-# TODO: Voxel space più grosso
-# TODO: Finire implementazione lables corrette
-# TODO:
+matplotlib.use('TkAgg')
 
 lookup_table = []
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
 labels_to_color = {0: (255, 0, 0), 1: (0, 255, 0),
                    2: (0, 0, 255), 3: (255, 0, 255)}
 
+# best frames for each camera
 cam_to_frame = {0: 10, 1: 0, 2: 41, 3: 52}
 frames = []
 backgrounds = []
@@ -118,136 +118,7 @@ def create_lookup_table(width, height, depth):
     return voxel_positions, lookup_table
 
 
-def get_histogram(colors):
-    channel_1 = [x[0] for x in colors]
-    channel_2 = [x[1] for x in colors]
-    channel_3 = [x[2] for x in colors]
-    data = [channel_1, channel_2, channel_3]
-    plt.hist(channel_1, bins=64, color="b")
-    plt.hist(channel_2, bins=64, color="g")
-    plt.hist(channel_3, bins=64, color="r")
-    plt.show()
-    return data
-
-
-def get_color_model():
-    global lookup_table
-    MGGs = [{0: None, 1: None, 2: None, 3: None}] * 4
-    # global frames
-
-    all_visible_voxels = []
-    all_labels = []
-    start_reconstruction = time()
-    for i in range(4):  # 4 reconstructions for the 4 frames nedded for the color models
-        visible_voxels = []
-        for vox in range(voxel_positions.shape[0]):  # for each voxel id
-            flag = True  # the voxel is foreground for all cameras (flag)
-            for camera_i in range(4):  # for each camera
-                # extract voxel 3D and 2D coordinates for that camera
-                x_voxels, y_voxels, z_voxels, x, y = lookup_table[vox, :, camera_i]
-                x = int(x)
-                y = int(y)
-                # check if the pixel is foreground for all cameras
-                mask = masks_all_frames[camera_i][cam_to_frame[i]]
-                if mask[y, x] == 0:
-                    flag = False
-
-            if flag:  # if it is foreground for all cameras
-                # adapt to glm format, scale and add to reconstruction
-                visible_voxels.append(
-                    [x_voxels / 75, -z_voxels / 75, y_voxels / 75])
-        print(f"time to reconstruct all: {time() - start_reconstruction}")
-        all_visible_voxels.append(visible_voxels)
-
-        # COLORS
-        voxels_to_cluster = np.array([[x[0], x[2]]
-                                      for x in visible_voxels], dtype=np.float32)
-        compactness, labels, centers = cv.kmeans(
-            voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
-        all_labels.append(labels)  # list of 4 lists, that has all labels for each visible voxel
-    # end of reconstructions
-
-    pixels_colors = []  # list of length 4, for each camera its 2d visible pixels, its clustering label and its original color
-    person_to_colors = [{0: [], 1: [], 2: [], 3: []}] * 4
-    histograms = [{0: [], 1: [], 2: [], 3: []}] * 4
-    for camera_i, vis_voxs in enumerate(all_visible_voxels):
-        imgpoints = []
-        chosen_frame = cam_to_frame[camera_i]
-        for i_label, vox in enumerate(vis_voxs):
-            x_3D, y_3D, z_3D = (
-                int(vox[0] * 75), int(vox[2] * 75), int(-vox[1] * 75))
-            img_points, _ = cv.projectPoints(np.array(
-                [x_3D, y_3D, z_3D], dtype=np.float32), rvecs_extr[camera_i], tvecs_extr[camera_i],
-                camera_matrixes[camera_i], dist_coeffs[camera_i])
-            x, y = (int(img_points.ravel()[0]), int(
-                img_points.ravel()[1]))  # x is < 644, y is < 486
-            # tuple (2d pixel, clustering label, original color)
-            imgpoints.append(((x, y), all_labels[camera_i][i_label][0],
-                              frames[camera_i][chosen_frame][y, x]))  # 2d coords,clustering label, original color
-        pixels_colors.append(imgpoints)
-    # print(pixels_colors[0][0], pixels_colors[0][1], pixels_colors[0][2])
-    # print("-----------------")
-    # print(pixels_colors[1][0], pixels_colors[1][1], pixels_colors[1][2])
-
-    print(person_to_colors)
-    print("-----------")
-    for camera_i, infos in enumerate(pixels_colors):
-        chosen_frame = cam_to_frame[camera_i]
-        frame_copy = frames[camera_i][chosen_frame].copy()
-        for point_i, pc in enumerate(infos):
-            # if (camera_i == 0 or camera_i == 1) and pc[1] == 0:
-            #     print(camera_i , pc)
-            cv.circle(frame_copy, pc[0], 2, labels_to_color[pc[1]], 2)
-            person_to_colors[0][pc[1]].append(pc[2].tolist())
-            if point_i > 1000 and point_i < 1020:
-                print('--------------')
-                print(person_to_colors[0][0])
-                print(person_to_colors[1][0])
-        # print(person_to_colors)
-        # print(person_to_colors[0][0])
-        # print("-----------")
-        # print(person_to_colors[1][0])
-        for person in person_to_colors[camera_i]:
-            print("person ", person)
-            print("camera ", camera_i)
-            histograms[camera_i][person] = get_histogram(person_to_colors[camera_i][person])  # store a 3XN matrix
-            # print(histograms[camera_i][person])
-            # print("------------------------------")
-        #     MGGs[camera_i][person] = cv.ml.EM_create()
-        #     MGGs[camera_i][person].setClustersNumber(3)
-        #     MGGs[camera_i][person].trainEM(
-        #         np.array(person_to_colors[camera_i][person], dtype=np.float32))
-
-        # for person in person_to_colors[camera_i]:
-        #     logliks = np.zeros(4)
-        #     for pixel in person_to_colors[camera_i][person]:
-        #         logliks[0] += MGGs[camera_i][0].predict2(np.array(pixel,
-        #                                             dtype=np.float32))[0][0]
-        #         logliks[1] += MGGs[camera_i][1].predict2(np.array(pixel,
-        #                                             dtype=np.float32))[0][0]
-        #         logliks[2] += MGGs[camera_i][2].predict2(np.array(pixel,
-        #                                             dtype=np.float32))[0][0]
-        #         logliks[3] += MGGs[camera_i][3].predict2(np.array(pixel,
-        #                                             dtype=np.float32))[0][0]
-        #     print(person, np.argmax(logliks))
-
-        show_image(frame_copy, "silhouttes")
-    for camera_hist in histograms:
-        for person_hist in camera_hist:
-            # print(histograms[0][person_hist][0])
-            # print("--------------")
-            # print(histograms[1][person_hist][0])
-            channel1_distance = np.corrcoef(histograms[0][person_hist][0], histograms[1][person_hist][0])
-            channel2_distance = np.corrcoef(histograms[0][person_hist][1], histograms[1][person_hist][1])
-            channel3_distance = np.corrcoef(histograms[0][person_hist][2], histograms[1][person_hist][2])
-            print(channel1_distance)
-            print(channel2_distance)
-            print(channel3_distance)
-            print(channel3_distance + channel1_distance + channel2_distance)
-    return visible_voxels, MGGs
-
-
-def reconstruct_voxels():
+def reconstruct_all_voxels():
     all_visible_voxels = []
     all_labels = []
     start_reconstruction = time()
@@ -285,16 +156,60 @@ def reconstruct_voxels():
     return all_visible_voxels, all_labels
 
 
-def get_color_model_2():
+def reconstruct_voxels(n_frame):
+    all_visible_voxels = []
+    all_labels = []
+    start_reconstruction = time()
+    # 4 reconstructions for the 4 frames needed for the color models
+    visible_voxels = []
+    for vox in range(voxel_positions.shape[0]):  # for each voxel id
+        flag = True  # the voxel is foreground for all cameras (flag)
+        x_voxels, y_voxels, z_voxels = 0, 0, 0
+        for i_camera in range(4):  # for each camera
+            # extract voxel 3D and 2D coordinates for that camera
+            x_voxels, y_voxels, z_voxels, x, y = lookup_table[vox, :, i_camera]
+            x = int(x)
+            y = int(y)
+            # check if the pixel is foreground for all cameras
+            mask = masks_all_frames[i_camera][n_frame]
+            if mask[y, x] == 0:
+                flag = False
+
+        if flag:  # if it is foregrounded for all cameras
+            # adapt to glm format, scale and add to reconstruction
+            visible_voxels.append(
+                [x_voxels / 75, -z_voxels / 75, y_voxels / 75])
+
+    # COLORS
+    voxels_to_cluster = np.array([[x[0], x[2]]
+                                  for x in visible_voxels], dtype=np.float32)
+    compactness, labels, centers = cv.kmeans(
+        voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
+    print(f"Voxel Reconstruction completed in {time() - start_reconstruction} seconds.")
+
+    return visible_voxels, labels
+
+
+def get_histograms():
+    """
+    The get_histograms function takes the frames and returns a list of histograms.
+    The histograms are calculated for each person in each camera, using the 2D pixels that correspond to visible voxels.
+    For every camera, we have a dictionary with 4 keys (0-3) corresponding to the 4 people in our scene.
+    Each key has as value another dictionary with two keys: 'histogram' and 'similarity'. The first one is an array of
+    256x256x256 values representing the color distribution of all pixels belonging to this person's body parts;
+    the second one is a float number between 0 and 1 indicating
+
+    :return: A list of length 4, where each element is a dictionary
+    """
+
     global lookup_table
-    mgg_list = [{0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None},
-                {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}]
+
     person_to_colors = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []},
                         {0: [], 1: [], 2: [], 3: []}]
     histograms = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []},
                   {0: [], 1: [], 2: [], 3: []}]
 
-    all_visible_voxels, all_labels = reconstruct_voxels()
+    all_visible_voxels, all_labels = reconstruct_all_voxels()
 
     # list of length 4, for each camera its 2d visible pixels, its clustering label and its original color
     pixels_colors = []
@@ -335,7 +250,6 @@ def get_color_model_2():
         for person in cameras:
             # calculate the histogram
             pixels = cameras[person]
-
             mask = np.zeros(frames[i_camera][cam_to_frame[i_camera]].shape[:2], np.uint8)
 
             waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
@@ -344,201 +258,218 @@ def get_color_model_2():
                 if y < waist:
                     mask[y, x] = 255
 
-            show_image(mask, "mask")
-
-            hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0, 1, 2], mask, [8, 8, 8],
+            hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0, 1, 2], mask, [256, 256, 256],
                                [0, 256, 0, 256, 0, 256])
-
-            # normalize the histogram
-            hist = cv.normalize(hist, hist).flatten()
-
+            cv.normalize(hist, hist, alpha=0, beta=400, norm_type=cv.NORM_MINMAX)
+            plt.plot(hist[0], color='b')
+            plt.plot(hist[1], color='g')
+            plt.plot(hist[2], color='r')
+            plt.show()
             histograms[i_camera][person] = hist
 
     # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
 
     # dictionary that for each camera tells us the person with the highest similarity
-    best_person = [{0: (0, 1), 1: (1, 1), 2: (2, 1), 3: (3, 1)},  # identity
-                   {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
-                   {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
-                   {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}]
-
-    right_dictionary = histograms[0]
-
-    for i_camera in range(len(histograms)):
-        for person0 in right_dictionary:
-            for person in best_person[i_camera]:
-                similarity = cv.compareHist(histograms[i_camera][person], right_dictionary[person0],
-                                            cv.HISTCMP_INTERSECT)
-                if i_camera > 0:
-                    if similarity > best_person[i_camera][person][1]:
-                        best_person[i_camera][person] = (person0, similarity)
+    # best_person = [{0: (0, 1), 1: (1, 1), 2: (2, 1), 3: (3, 1)},  # identity
+    #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
+    #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
+    #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}]
+    #
+    # right_dictionary = histograms[0]
+    #
+    # for i_camera in range(len(histograms)):
+    #     for person0 in right_dictionary:
+    #         for person in best_person[i_camera]:
+    #             similarity = cv.compareHist(histograms[i_camera][person], right_dictionary[person0],
+    #                                         cv.HISTCMP_INTERSECT)
+    #             if i_camera > 0:
+    #                 if similarity > best_person[i_camera][person][1]:
+    #                     best_person[i_camera][person] = (person0, similarity)
 
     # AT THIS POINT WE HAVE THE BEST PERSON FOR EACH CAMERA
 
-    for i_camera in range(4):
-        frame_copy = frames[i_camera][cam_to_frame[i_camera]].copy()
-        frame_copy_right = frames[i_camera][cam_to_frame[i_camera]].copy()
-        for pixel, label, color in pixels_colors[i_camera]:
-            cv.circle(frame_copy, pixel, 3, labels_to_color[label], -1)
-            cv.circle(frame_copy_right, pixel, 3, labels_to_color[best_person[i_camera][label][0]], -1)
-        show_image(frame_copy, "auto")
-        show_image(frame_copy_right, "right")
+    best_person = [
+        {0: (0, histograms[0][0]), 1: (1, histograms[0][1]), 2: (2, histograms[0][2]), 3: (3, histograms[0][3])},
+        {0: (2, histograms[1][0]), 1: (3, histograms[1][1]), 2: (0, histograms[1][2]), 3: (1, histograms[1][3])},
+        {0: (2, histograms[2][0]), 1: (0, histograms[2][1]), 2: (3, histograms[2][2]), 3: (1, histograms[2][3])},
+        {0: (1, histograms[3][0]), 1: (3, histograms[3][1]), 2: (2, histograms[3][2]), 3: (0, histograms[3][3])}]
 
-    # for i_camera, pixels_color in enumerate(pixels_colors):
-    #     frame_copy = frames[i_camera][cam_to_frame[i_camera]].copy()
-    #     for pixel, label, color in pixels_color:
-    #         cv.circle(frame_copy, pixel, 3, labels_to_color[label], -1)
-    #     show_image(frame_copy, "frame")
+    # TODO: average the histograms of the best person for each camera
+    hists = np.array([np.zeros_like(histograms[0][0]) for _ in range(4)])
+    for i_camera in range(len(best_person)):
+        for person in best_person[i_camera]:
+            hists[person] += best_person[i_camera][person][1]
+    hists = hists / 4
+
+    for his in hists:
+        plt.plot(his[0], color='b')
+        plt.plot(his[1], color='g')
+        plt.plot(his[2], color='r')
+        plt.show()
+
+    return hists
 
 
-def start_online(MGGs):
-    # for each frame we considered
-    for n_frame in range(0, len(frames[0]), 10):
+def start_online(histograms):
+    global lookup_table
 
-        visible_voxels = []
-        start_reconstruction = time()
+    for n_frame in range(len(frames[0])):
+        visible_voxels, labels = reconstruct_voxels(n_frame)
+        for n_camera in range(4):
+            image_points = []
 
-        for vox in range(voxel_positions.shape[0]):  # for each voxel id
-            flag = True  # the voxel is foreground for all cameras (flag)
-            for camera_i in range(4):  # for each camera
-                # extract voxel 3D and 2D coordinates for that camera
-                x_voxels, y_voxels, z_voxels, x, y = lookup_table[vox, :, camera_i]
-                x = int(x)
-                y = int(y)
-                # check if the pixel is foreground for all cameras
-                mask = masks_all_frames[camera_i][n_frame]
-                if mask[y, x] == 0:
-                    flag = False
-
-            if flag:  # if it is foreground for all cameras
-                # adapt to glm format, scale and add to reconstruction
-                visible_voxels.append(
-                    [x_voxels / 75, -z_voxels / 75, y_voxels / 75])
-        print(f"time to reconstruct all: {time() - start_reconstruction}")
-
-        # COLORS
-        voxels_to_cluster = np.array([[x[0], x[2]]
-                                      for x in visible_voxels], dtype=np.float32)
-        compactness, labels, centers = cv.kmeans(
-            voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
-
-        pixels_colors = []
-        color_model = [{0: [], 1: [], 2: [], 3: []}] * 4
-        correct_labels = np.zeros((4, 4), dtype=tuple)
-        for camera_i in range(4):
-            imgpoints = []
             for i_label, vox in enumerate(visible_voxels):
-                x_3D, y_3D, z_3D = (
-                    int(vox[0] * 75), int(vox[2] * 75), int(-vox[1] * 75))
-                img_points, _ = cv.projectPoints(np.array(
-                    [x_3D, y_3D, z_3D], dtype=np.float32), rvecs_extr[camera_i], tvecs_extr[camera_i],
-                    camera_matrixes[camera_i], dist_coeffs[camera_i])
-                x, y = (int(img_points.ravel()[0]), int(
-                    img_points.ravel()[1]))  # x is < 644, y is < 486
-                # tuple (2d pixel, clustering label, original color)
-                imgpoints.append(
-                    ((x, y), labels[i_label][0], frames[camera_i][n_frame][y, x]))
-            pixels_colors.append(imgpoints)
-            for pc in pixels_colors[camera_i]:
-                color_model[camera_i][pc[1]].append(pc[2].tolist())
-            for person in color_model[camera_i]:
-                logliks = np.zeros(4)
-                for pixel in color_model[camera_i][person]:
-                    logliks[0] += MGGs[camera_i][0].predict2(np.array(pixel,
-                                                                      dtype=np.float32))[0][0]
-                    logliks[1] += MGGs[camera_i][1].predict2(np.array(pixel,
-                                                                      dtype=np.float32))[0][0]
-                    logliks[2] += MGGs[camera_i][2].predict2(np.array(pixel,
-                                                                      dtype=np.float32))[0][0]
-                    logliks[3] += MGGs[camera_i][3].predict2(np.array(pixel,
-                                                                      dtype=np.float32))[0][0]
-                print(logliks)
-                correct_labels[camera_i][person] = (np.argmax(logliks), np.max(
-                    logliks))  # store the best score for each person and for each camera (16 guesses)
+                x_3d, y_3d, z_3d = (int(vox[0] * 75), int(vox[2] * 75), int(-vox[1] * 75))
+                coordinates_2d, _ = cv.projectPoints(np.array(
+                    [x_3d, y_3d, z_3d], dtype=np.float32), rvecs_extr[n_camera], tvecs_extr[n_camera],
+                    camera_matrixes[n_camera], dist_coeffs[n_camera])
+                x_2d, y_2d = (int(coordinates_2d.ravel()[0]), int(
+                    coordinates_2d.ravel()[1]))
+                image_points.append(
+                    ((x_2d, y_2d), labels[i_label][0]))
 
-        final_labels = np.zeros(4)
-        print("correct_label", correct_labels)
-        for i in range(4):
-            all_logliks = [x[1] for x in correct_labels[:, i]]  # 4 different scores for person i, one for each camera
-            best_guess = np.argmax(all_logliks)  # which camera had the most confident guess
-            print("best guess: ", best_guess)
-            # print(np.where(correct_labels[best_guess] == correct_labels[best_guess, i]))
-            final_labels[i] = correct_labels[best_guess, i][0]
-        print(final_labels)
+            person_pixels = {0: [], 1: [], 2: [], 3: []}
+            for pixel, label in image_points:
+                person_pixels[label].append(pixel)
 
-        frame_copy = frames[best_guess][n_frame].copy()
-        frame_copy2 = frames[best_guess][n_frame].copy()
-        for pc in pixels_colors[best_guess]:
-            current_label = pc[1]
-            offline_label = final_labels[current_label]
-            color = labels_to_color[offline_label]
-            online_color = labels_to_color[int(current_label)]
-            cv.circle(frame_copy, pc[0], 2, color, 2)
-            cv.circle(frame_copy2, pc[0], 2, online_color, 2)
-        show_image(frame_copy, "silhouttes")
-        show_image(frame_copy2, "silhouttes")
-        clusters_to_tracking(centers, final_labels)
-    return
+            best_person = {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}
+            for person0 in range(4):
+                for person in person_pixels:
+                    mask = np.zeros(frames[n_camera][n_frame].shape[:2], np.uint8)
+                    pixels = person_pixels[person]
+                    waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
+                    for x, y in pixels:
+                        if y < waist:
+                            mask[y, x] = 255
+                    hist = cv.calcHist([frames[n_camera][n_frame]], [0, 1, 2], mask, [256, 256, 256],
+                                       [0, 256, 0, 256, 0, 256])
+                    cv.normalize(hist, hist, alpha=0, norm_type=cv.NORM_MINMAX)
+
+                    similarity = cv.compareHist(histograms[person], hist, cv.HISTCMP_CORREL)
+
+                    if similarity > best_person[person][1]:
+                        best_person[person] = (person0, similarity)
+            #
+            # for i_camera, cameras in enumerate(person_to_colors):
+            #     # for each person
+            #     for person in cameras:
+            #         # calculate the histogram
+            #         pixels = cameras[person]
+            #
+            #         mask = np.zeros(frames[i_camera][cam_to_frame[i_camera]].shape[:2], np.uint8)
+            #
+            #         waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
+            #
+            #         for x, y in pixels:
+            #             if y < waist:
+            #                 mask[y, x] = 255
+            #
+            #         hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0, 1, 2], mask, [8, 8, 8],
+            #                            [0, 256, 0, 256, 0, 256])
+            #         hist_size = 256
+            #         hist_range = (0, 256)
+            #         b_hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0], mask, [hist_size], hist_range)
+            #         g_hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [1], mask, [hist_size], hist_range)
+            #         r_hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [2], mask, [hist_size], hist_range)
+            #
+            #         hist_h = 400
+            #         cv.normalize(b_hist, b_hist, alpha=0, beta=hist_h, norm_type=cv.NORM_MINMAX)
+            #         cv.normalize(g_hist, g_hist, alpha=0, beta=hist_h, norm_type=cv.NORM_MINMAX)
+            #         cv.normalize(r_hist, r_hist, alpha=0, beta=hist_h, norm_type=cv.NORM_MINMAX)
+            #
+            #         histograms[i_camera][person] = [b_hist, g_hist, r_hist]
+            #
+            # # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
+            #
+            # # dictionary that for each camera tells us the person with the highest similarity
+            # # best_person = [{0: (0, 1), 1: (1, 1), 2: (2, 1), 3: (3, 1)},  # identity
+            # #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
+            # #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
+            # #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}]
+            # #
+            # # right_dictionary = histograms[0]
+            # #
+            # # for i_camera in range(len(histograms)):
+            # #     for person0 in right_dictionary:
+            # #         for person in best_person[i_camera]:
+            # #             similarity = cv.compareHist(histograms[i_camera][person], right_dictionary[person0],
+            # #                                         cv.HISTCMP_INTERSECT)
+            # #             if i_camera > 0:
+            # #                 if similarity > best_person[i_camera][person][1]:
+            # #                     best_person[i_camera][person] = (person0, similarity)
+            #
+            # # AT THIS POINT WE HAVE THE BEST PERSON FOR EACH CAMERA
+            #
+            # best_person = [
+            #     {0: (0, histograms[0][0]), 1: (1, histograms[0][1]), 2: (2, histograms[0][2]),
+            #      3: (3, histograms[0][3])},
+            #     {0: (2, histograms[1][0]), 1: (3, histograms[1][1]), 2: (0, histograms[1][2]),
+            #      3: (1, histograms[1][3])},
+            #     {0: (2, histograms[2][0]), 1: (0, histograms[2][1]), 2: (3, histograms[2][2]),
+            #      3: (1, histograms[2][3])},
+            #     {0: (1, histograms[3][0]), 1: (3, histograms[3][1]), 2: (2, histograms[3][2]),
+            #      3: (0, histograms[3][3])}]
+            #
+            # hists = []
+            # for i_person in range(4):
+            #     for i_camera in range(4):
+            #         b = np.zeros_like(best_person[0][0][1][0])
+            #         g = np.zeros_like(best_person[0][0][1][0])
+            #         r = np.zeros_like(best_person[0][0][1][0])
+            #         for person_i in range(4):
+            #             if best_person[i_camera][person_i][0] == i_person:
+            #                 b += best_person[i_camera][person_i][1][0]
+            #                 g += best_person[i_camera][person_i][1][1]
+            #                 r += best_person[i_camera][person_i][1][2]
+            #         plt.plot(b // 4, color='b')
+            #         plt.plot(g // 4, color='g')
+            #         plt.plot(r // 4, color='r')
+            #         plt.title(f"cam{i_camera} person{i_person}")
+            #         plt.show()
+
+            frame_copy = frames[n_camera][n_frame].copy()
+            for pixel, label in image_points:
+                cv.circle(frame_copy, pixel, 3, labels_to_color[best_person[label][0]], -1)
+            show_image(frame_copy, "auto")
 
 
 last_points = []
 
+if __name__ == '__main__':
+    start_lookup = time()
+    exists = os.path.isfile('./data/lookup_table.npz')
+    if exists:  # if lookup table already exists, load it
+        with np.load(f'./data/lookup_table.npz') as file:
+            lookup_table = file['lookup_table']
+        voxel_positions = np.array(create_cube(
+            3000, 6000, 6000), dtype=np.float32)
+        print(f"time to load/create lookup table: {time() - start_lookup}")
+    else:  # if it does not, create it and save the file
+        voxel_positions, lookup_table = create_lookup_table(
+            3000, 6000, 6000)
+        print(f"time to load/create lookup table: {time() - start_lookup}")
 
-def clusters_to_tracking(centers, labels):
-    global plane
-    global last_points
-    older = last_points
+    for camera_i in range(4):
+        # FOR EVERY FRAME OF THE VIDEO (5 frames per sec)
+        frames_c = []
+        cap = cv.VideoCapture(cameras_videos_info[camera_i][2])
+        for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2):
+            retF, frame = cap.read()  # get first frame (used for color model)
+            if i % 10 == 0:
+                frames_c.append(frame)
+        frames.append(frames_c)
+        cap.release()
 
-    last_points = []
-    for i in range(len(centers)):
-        x, y = centers[i]
-        x = int(x) + 64
-        y = int(y) + 64
-        last_points.append((x, y))
-        plane[y, x] = labels_to_color[labels[i]]
-        if len(older) != 0:
-            cv.line(plane, (x, y), older[i], color=labels_to_color[labels[i]])
-    show_image(plane, "silhouttes")
+        cap = cv.VideoCapture(cameras_videos_info[camera_i][0])
+        w, h = int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(
+            cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+        n_frames_background = 40
+        imgs_list_background = [cap.read()[1] for i in range(n_frames_background)]
+        cap.release()
 
+        # get average of baground
+        background = average_images(imgs_list_background)
+        backgrounds.append(background)
 
-# execution
-start_lookup = time()
-exists = os.path.isfile('./data/lookup_table.npz')
-if exists:  # if lookup table already exists, load it
-    with np.load(f'./data/lookup_table.npz') as file:
-        lookup_table = file['lookup_table']
-    voxel_positions = np.array(create_cube(
-        3000, 6000, 6000), dtype=np.float32)
-    print(f"time to load/create lookup table: {time() - start_lookup}")
-else:  # if it does not, create it and save the file
-    voxel_positions, lookup_table = create_lookup_table(
-        3000, 6000, 6000)
-    print(f"time to load/create lookup table: {time() - start_lookup}")
-
-for camera_i in range(4):
-    # FOR EVERY FRAME OF THE VIDEO (5 frames per sec)
-    frames_c = []
-    cap = cv.VideoCapture(cameras_videos_info[camera_i][2])
-    for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2):
-        retF, frame = cap.read()  # get first frame (used for color model)
-        if i % 10 == 0:
-            frames_c.append(frame)
-    frames.append(frames_c)
-    cap.release()
-
-    cap = cv.VideoCapture(cameras_videos_info[camera_i][0])
-    w, h = int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(
-        cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-    n_frames_background = 40
-    imgs_list_background = [cap.read()[1] for i in range(n_frames_background)]
-    cap.release()
-
-    # get average of baground
-    background = average_images(imgs_list_background)
-    backgrounds.append(background)
-
-# MGGs = get_color_model()[1]
-print(get_color_model_2())
-# start_online(MGGs)
-
-# TODO: build 16 models, and calcualte a golbal loglik to choose the best guess for each pixel corresponding to each person.
+    all_histograms = get_histograms()
+    start_online(all_histograms)
