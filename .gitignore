@@ -8,6 +8,9 @@
 
 /assignment3/data/lookup_table.npz
 
+/assignment3/solution2/4persons/*
+
+/assignment3/solution2/data/lookup_table.npz
 .idea/*
 
 # Byte-compiled / optimized / DLL files
