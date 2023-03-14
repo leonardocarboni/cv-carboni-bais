@@ -1,6 +1,6 @@
 import os
 from time import time
-
+import random
 import matplotlib
 
 from utils import *
@@ -262,7 +262,7 @@ def get_gaussian_mixture_models():
                 if y < waist:
                     mask[y, x] = 255
 
-            person_pixels = frames[i_camera][cam_to_frame[i_camera]][mask == 255].tolist()
+            person_pixels = cv.cvtColor(frames[i_camera][cam_to_frame[i_camera]], cv.COLOR_BGR2HSV)[mask == 255].tolist()
 
             person_training_data[best_person[i_camera * 4 + person]].append(person_pixels)
 
@@ -280,7 +280,7 @@ def get_gaussian_mixture_models():
 def start_online(gaussian_mixture_models):
     global lookup_table
 
-    for n_frame in range(5, len(frames[0])):
+    for n_frame in range(7, len(frames[0])):
         visible_voxels, labels = reconstruct_voxels(n_frame)
         best_people = []
         images_points = []
@@ -314,7 +314,7 @@ def start_online(gaussian_mixture_models):
                 probabilities = []
                 for i_gmm in range(4):
                     log_likelihood = 0
-                    for pixel in frames[n_camera][n_frame][mask == 255].tolist():
+                    for pixel in cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist():
                         log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][
                             0]
                     probabilities.append(log_likelihood / len(frames[n_camera][n_frame][mask == 255].tolist()))
@@ -337,7 +337,10 @@ def start_online(gaussian_mixture_models):
         for i_camera in range(4):
             frame_x = frames[i_camera][n_frame].copy()
             for pixel, label in images_points[i_camera]:
-                a = np.where(right_labels == label)[0][0]
+                if label in right_labels:
+                    a = np.where(right_labels == label)[0][0]
+                else:
+                    a = random.randint(0, len(right_labels)-1)
                 cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
 
             show_image(frame_x, f"frame {n_frame} camera {i_camera}")
