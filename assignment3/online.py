@@ -1,6 +1,8 @@
 import os
-from time import time
 import random
+from collections import Counter
+from time import time
+
 import matplotlib
 
 from utils import *
@@ -262,7 +264,9 @@ def get_gaussian_mixture_models():
                 if y < waist:
                     mask[y, x] = 255
 
-            person_pixels = cv.cvtColor(frames[i_camera][cam_to_frame[i_camera]], cv.COLOR_BGR2HSV)[mask == 255].tolist()
+            # person_pixels = cv.cvtColor(frames[i_camera][cam_to_frame[i_camera]], cv.COLOR_BGR2HSV)[
+            #     mask == 255].tolist()
+            person_pixels = frames[i_camera][cam_to_frame[i_camera]][mask == 255].tolist()
 
             person_training_data[best_person[i_camera * 4 + person]].append(person_pixels)
 
@@ -274,13 +278,28 @@ def get_gaussian_mixture_models():
 
     # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
 
+    for i_camera, pixels_color in enumerate(pixels_colors):
+        # for each person
+        frame = frames[i_camera][cam_to_frame[i_camera]]
+        for pixel, label, color in pixels_color:
+            likes = []
+            for gmm_n in range(4):
+                likes.append(gaussian_mixture_models[gmm_n].predict2(np.array([color], dtype=np.float32))[0])
+
+            max_verstappen = np.argmax(likes)
+            cv.circle(frame, pixel, 1, labels_to_color[max_verstappen], -1)
+        show_image(frame, "frame" + str(i_camera))
+
+
+
+
     return gaussian_mixture_models
 
 
 def start_online(gaussian_mixture_models):
     global lookup_table
 
-    for n_frame in range(7, len(frames[0])):
+    for n_frame in range(len(frames[0])):
         visible_voxels, labels = reconstruct_voxels(n_frame)
         best_people = []
         images_points = []
@@ -314,7 +333,8 @@ def start_online(gaussian_mixture_models):
                 probabilities = []
                 for i_gmm in range(4):
                     log_likelihood = 0
-                    for pixel in cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist():
+                    # for pixel in cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist():
+                    for pixel in frames[n_camera][n_frame][mask == 255].tolist():
                         log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][
                             0]
                     probabilities.append(log_likelihood / len(frames[n_camera][n_frame][mask == 255].tolist()))
@@ -322,28 +342,43 @@ def start_online(gaussian_mixture_models):
                 best_person[person] = (np.argmax(probabilities), np.max(probabilities))
             best_people.append(best_person)
 
-        print(best_people)
+        # best people is a list of dictionaries, each dictionary contains, for each person/label, the best cluster
+        # number (of that camera) and the probability of that cluster
 
         right_labels = []
         for i_person in range(4):  # persona assoluta [label vera]
-            tumadre = []
+            best_label_and_prob = []
             for i_camera in range(4):  # camera
-                tumadre.append(best_people[i_camera][i_person])
-            # take the one with the second parameter (probability) higher
+                best_label_and_prob.append(best_people[i_camera][i_person])
+            # take the one with the first parameter (the label) that appear the most
 
-            sicuro = max(tumadre, key=lambda x: x[1])[0]
-            right_labels.append(sicuro)
+            occurrences = Counter(x[0] for x in best_label_and_prob)
+            first_two = occurrences.most_common(2)
 
+            if len(first_two) == 1:
+                right_label = first_two[0][0]
+            elif first_two[0][1] != first_two[1][1]:
+                right_label = first_two[0][0]
+            else:
+                right_label = max(best_label_and_prob, key=lambda x: x[1])[0]
+
+            right_labels.append(right_label)
+
+        frames_x = []
         for i_camera in range(4):
             frame_x = frames[i_camera][n_frame].copy()
             for pixel, label in images_points[i_camera]:
                 if label in right_labels:
                     a = np.where(right_labels == label)[0][0]
                 else:
-                    a = random.randint(0, len(right_labels)-1)
+                    print(f"FAIL in {n_frame}")
+                    a = random.randint(0, len(right_labels) - 1)
                 cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
+            frames_x.append(frame_x)
+        image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
+                                        np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
 
-            show_image(frame_x, f"frame {n_frame} camera {i_camera}")
+        show_image(image_to_show, f"frame {n_frame}")
 
 
 last_points = []
