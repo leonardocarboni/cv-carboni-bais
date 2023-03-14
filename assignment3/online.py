@@ -184,6 +184,7 @@ def reconstruct_voxels(n_frame):
                                   for x in visible_voxels], dtype=np.float32)
     compactness, labels, centers = cv.kmeans(
         voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
+
     print(f"Voxel Reconstruction completed in {time() - start_reconstruction} seconds.")
 
     return visible_voxels, labels
@@ -246,7 +247,7 @@ def get_gaussian_mixture_models():
     # {0: (1, histograms[3][0]), 1: (3, histograms[3][1]), 2: (2, histograms[3][2]),
     #  3: (0, histograms[3][3])}]
 
-    person_training_data = []
+    person_training_data = [[], [], [], []]
     for i_camera, cameras in enumerate(person_to_colors):
         # for each person
 
@@ -261,44 +262,17 @@ def get_gaussian_mixture_models():
                 if y < waist:
                     mask[y, x] = 255
 
-            person_training_data.append(frames[i_camera][cam_to_frame[i_camera]][mask == 255].tolist())
+            person_pixels = frames[i_camera][cam_to_frame[i_camera]][mask == 255].tolist()
+
+            person_training_data[best_person[i_camera * 4 + person]].append(person_pixels)
 
     for i_person in range(4):
-        data = []
-        # get the right data for each camera
-        for i_camera in range(4):
-            data.append(person_training_data[i_person + i_camera * 4])
         # flatten the data
-        data = [item for sublist in data for item in sublist]
+        data = [item for sublist in person_training_data[i_person] for item in sublist]
         # train the gaussian mixture model
         gaussian_mixture_models[i_person].trainEM(np.array(data, dtype=np.float32))
 
     # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
-
-    # dictionary that for each camera tells us the person with the highest similarity
-    # best_person = [{0: (0, 1), 1: (1, 1), 2: (2, 1), 3: (3, 1)},  # identity
-    #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
-    #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
-    #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}]
-    #
-    # right_dictionary = histograms[0]
-    #
-    # for i_camera in range(len(histograms)):
-    #     for person0 in right_dictionary:
-    #         for person in best_person[i_camera]:
-    #             similarity = cv.compareHist(histograms[i_camera][person], right_dictionary[person0],
-    #                                         cv.HISTCMP_INTERSECT)
-    #             if i_camera > 0:
-    #                 if similarity > best_person[i_camera][person][1]:
-    #                     best_person[i_camera][person] = (person0, similarity)
-
-    # AT THIS POINT WE HAVE THE BEST PERSON FOR EACH CAMERA
-
-    # for his in hists:
-    #     plt.plot(his[0], color='b')
-    #     plt.plot(his[1], color='g')
-    #     plt.plot(his[2], color='r')
-    #     plt.show()
 
     return gaussian_mixture_models
 
@@ -306,9 +280,10 @@ def get_gaussian_mixture_models():
 def start_online(gaussian_mixture_models):
     global lookup_table
 
-    for n_frame in range(len(frames[0])):
+    for n_frame in range(5, len(frames[0])):
         visible_voxels, labels = reconstruct_voxels(n_frame)
         best_people = []
+        images_points = []
         for n_camera in range(4):
             image_points = []
 
@@ -322,6 +297,7 @@ def start_online(gaussian_mixture_models):
                     coordinates_2d.ravel()[1]))
                 image_points.append(
                     ((x_2d, y_2d), labels[i_label][0]))
+            images_points.append(image_points)
 
             person_pixels = {0: [], 1: [], 2: [], 3: []}
             for pixel, label in image_points:
@@ -339,25 +315,32 @@ def start_online(gaussian_mixture_models):
                 for i_gmm in range(4):
                     log_likelihood = 0
                     for pixel in frames[n_camera][n_frame][mask == 255].tolist():
-                        log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][0]
+                        log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][
+                            0]
                     probabilities.append(log_likelihood / len(frames[n_camera][n_frame][mask == 255].tolist()))
 
                 best_person[person] = (np.argmax(probabilities), np.max(probabilities))
             best_people.append(best_person)
-            # TODO: TUA MADRE
 
-            frame_copy = frames[n_camera][n_frame].copy()
-            for pixel, label in image_points:
-                cv.circle(frame_copy, pixel, 3, labels_to_color[best_person[label][0]], -1)
-            show_image(frame_copy, "auto")
+        print(best_people)
 
         right_labels = []
-        for i_person in range(4):
-            probs = []
-            for i_camera in range(4):
-                probs.append(best_people[i_camera][i_person])
-            # save the most occurring person with the highest probability
-            right_labels.append(max(set(probs), key=probs.count))
+        for i_person in range(4):  # persona assoluta [label vera]
+            tumadre = []
+            for i_camera in range(4):  # camera
+                tumadre.append(best_people[i_camera][i_person])
+            # take the one with the second parameter (probability) higher
+
+            sicuro = max(tumadre, key=lambda x: x[1])[0]
+            right_labels.append(sicuro)
+
+        for i_camera in range(4):
+            frame_x = frames[i_camera][n_frame].copy()
+            for pixel, label in images_points[i_camera]:
+                a = np.where(right_labels == label)[0][0]
+                cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
+
+            show_image(frame_x, f"frame {n_frame} camera {i_camera}")
 
 
 last_points = []
@@ -394,9 +377,10 @@ if __name__ == '__main__':
         imgs_list_background = [cap.read()[1] for i in range(n_frames_background)]
         cap.release()
 
-        # get average of baground
+        # get average of background
         background = average_images(imgs_list_background)
         backgrounds.append(background)
 
-    gaussian_mixture_models = get_gaussian_mixture_models()
-    start_online(gaussian_mixture_models)
+    gmm_s = get_gaussian_mixture_models()
+
+    start_online(gmm_s)
