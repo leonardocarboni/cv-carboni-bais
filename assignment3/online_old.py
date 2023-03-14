@@ -2,6 +2,7 @@ import os
 from time import time
 
 import matplotlib
+import matplotlib.pyplot as plt
 
 from utils import *
 
@@ -20,10 +21,10 @@ backgrounds = []
 show = True
 
 # loading parameters of cam2 for color model
-camera_matrices = []
-distance_coefficients = []
-rotation_vector_extrinsic = []
-translation_vector_extrinsic = []
+camera_matrixes = []
+dist_coeffs = []
+rvecs_extr = []
+tvecs_extr = []
 
 masks_all_frames = []
 for i in range(4):
@@ -33,10 +34,10 @@ for i in range(4):
 for i in range(4):
     s = cv.FileStorage(
         f"./data/cam{i + 1}/config.xml", cv.FileStorage_READ)
-    camera_matrices.append(s.getNode('camera_matrix').mat())
-    distance_coefficients.append(s.getNode('dist_coeffs').mat())
-    rotation_vector_extrinsic.append(s.getNode('rvec_extr').mat())
-    translation_vector_extrinsic.append(s.getNode('tvec_extr').mat())
+    camera_matrixes.append(s.getNode('camera_matrix').mat())
+    dist_coeffs.append(s.getNode('dist_coeffs').mat())
+    rvecs_extr.append(s.getNode('rvec_extr').mat())
+    tvecs_extr.append(s.getNode('tvec_extr').mat())
     s.release()
 
 plane = np.zeros((128, 128, 3))
@@ -189,15 +190,24 @@ def reconstruct_voxels(n_frame):
     return visible_voxels, labels
 
 
-def get_gaussian_mixture_models():
+def get_histograms():
+    """
+    The get_histograms function takes the frames and returns a list of histograms.
+    The histograms are calculated for each person in each camera, using the 2D pixels that correspond to visible voxels.
+    For every camera, we have a dictionary with 4 keys (0-3) corresponding to the 4 people in our scene.
+    Each key has as value another dictionary with two keys: 'histogram' and 'similarity'. The first one is an array of
+    256x256x256 values representing the color distribution of all pixels belonging to this person's body parts;
+    the second one is a float number between 0 and 1 indicating
+
+    :return: A list of length 4, where each element is a dictionary
+    """
+
     global lookup_table
 
     person_to_colors = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []},
                         {0: [], 1: [], 2: [], 3: []}]
-    gaussian_mixture_models = {0: cv.ml.EM_create(), 1: cv.ml.EM_create(), 2: cv.ml.EM_create(), 3: cv.ml.EM_create()}
-
-    for person_i in range(4):
-        gaussian_mixture_models[person_i].setClustersNumber(3)
+    histograms = [{0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []}, {0: [], 1: [], 2: [], 3: []},
+                  {0: [], 1: [], 2: [], 3: []}]
 
     all_visible_voxels, all_labels = reconstruct_all_voxels()
 
@@ -214,9 +224,8 @@ def get_gaussian_mixture_models():
         for i_label, vox in enumerate(visible_voxels):
             x_3d, y_3d, z_3d = (int(vox[0] * 75), int(vox[2] * 75), int(-vox[1] * 75))
             coordinates_2d, _ = cv.projectPoints(np.array(
-                [x_3d, y_3d, z_3d], dtype=np.float32), rotation_vector_extrinsic[i_camera],
-                translation_vector_extrinsic[i_camera],
-                camera_matrices[i_camera], distance_coefficients[i_camera])
+                [x_3d, y_3d, z_3d], dtype=np.float32), rvecs_extr[i_camera], tvecs_extr[i_camera],
+                camera_matrixes[i_camera], dist_coeffs[i_camera])
             x_2d, y_2d = (int(coordinates_2d.ravel()[0]), int(
                 coordinates_2d.ravel()[1]))  # x is < 644, y is < 486
             # tuple (2d pixel, clustering label, original color)
@@ -236,20 +245,8 @@ def get_gaussian_mixture_models():
 
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
 
-    best_person = [0, 1, 2, 3, 2, 3, 0, 1, 2, 0, 3, 1, 1, 3, 2, 0]
-    # {0: (0, []), 1: (1, histograms[0][1]), 2: (2, histograms[0][2]),
-    #  3: (3, histograms[0][3])},
-    # {0: (2, histograms[1][0]), 1: (3, histograms[1][1]), 2: (0, histograms[1][2]),
-    #  3: (1, histograms[1][3])},
-    # {0: (2, histograms[2][0]), 1: (0, histograms[2][1]), 2: (3, histograms[2][2]),
-    #  3: (1, histograms[2][3])},
-    # {0: (1, histograms[3][0]), 1: (3, histograms[3][1]), 2: (2, histograms[3][2]),
-    #  3: (0, histograms[3][3])}]
-
-    person_training_data = []
     for i_camera, cameras in enumerate(person_to_colors):
         # for each person
-
         for person in cameras:
             # calculate the histogram
             pixels = cameras[person]
@@ -261,17 +258,14 @@ def get_gaussian_mixture_models():
                 if y < waist:
                     mask[y, x] = 255
 
-            person_training_data.append(frames[i_camera][cam_to_frame[i_camera]][mask == 255].tolist())
-
-    for i_person in range(4):
-        data = []
-        # get the right data for each camera
-        for i_camera in range(4):
-            data.append(person_training_data[i_person + i_camera * 4])
-        # flatten the data
-        data = [item for sublist in data for item in sublist]
-        # train the gaussian mixture model
-        gaussian_mixture_models[i_person].trainEM(np.array(data, dtype=np.float32))
+            hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0, 1, 2], mask, [256, 256, 256],
+                               [0, 256, 0, 256, 0, 256])
+            cv.normalize(hist, hist, alpha=0, beta=400, norm_type=cv.NORM_MINMAX)
+            # plt.plot(hist[0], color='b')
+            # plt.plot(hist[1], color='g')
+            # plt.plot(hist[2], color='r')
+            # plt.show()
+            histograms[i_camera][person] = hist
 
     # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
 
@@ -294,30 +288,41 @@ def get_gaussian_mixture_models():
 
     # AT THIS POINT WE HAVE THE BEST PERSON FOR EACH CAMERA
 
+    best_person = [
+        {0: (0, histograms[0][0]), 1: (1, histograms[0][1]), 2: (2, histograms[0][2]), 3: (3, histograms[0][3])},
+        {0: (2, histograms[1][0]), 1: (3, histograms[1][1]), 2: (0, histograms[1][2]), 3: (1, histograms[1][3])},
+        {0: (2, histograms[2][0]), 1: (0, histograms[2][1]), 2: (3, histograms[2][2]), 3: (1, histograms[2][3])},
+        {0: (1, histograms[3][0]), 1: (3, histograms[3][1]), 2: (2, histograms[3][2]), 3: (0, histograms[3][3])}]
+
+    # TODO: average the histograms of the best person for each camera
+    hists = np.array([np.zeros_like(histograms[0][0]) for _ in range(4)])
+    for i_camera in range(len(best_person)):
+        for person in best_person[i_camera]:
+            hists[person] += best_person[i_camera][person][1]
+    hists = hists / 4
+
     # for his in hists:
     #     plt.plot(his[0], color='b')
     #     plt.plot(his[1], color='g')
     #     plt.plot(his[2], color='r')
     #     plt.show()
 
-    return gaussian_mixture_models
+    return hists
 
 
-def start_online(gaussian_mixture_models):
+def start_online(histograms):
     global lookup_table
 
     for n_frame in range(len(frames[0])):
         visible_voxels, labels = reconstruct_voxels(n_frame)
-        best_people = []
         for n_camera in range(4):
             image_points = []
 
             for i_label, vox in enumerate(visible_voxels):
                 x_3d, y_3d, z_3d = (int(vox[0] * 75), int(vox[2] * 75), int(-vox[1] * 75))
                 coordinates_2d, _ = cv.projectPoints(np.array(
-                    [x_3d, y_3d, z_3d], dtype=np.float32), rotation_vector_extrinsic[n_camera],
-                    translation_vector_extrinsic[n_camera],
-                    camera_matrices[n_camera], distance_coefficients[n_camera])
+                    [x_3d, y_3d, z_3d], dtype=np.float32), rvecs_extr[n_camera], tvecs_extr[n_camera],
+                    camera_matrixes[n_camera], dist_coeffs[n_camera])
                 x_2d, y_2d = (int(coordinates_2d.ravel()[0]), int(
                     coordinates_2d.ravel()[1]))
                 image_points.append(
@@ -328,36 +333,104 @@ def start_online(gaussian_mixture_models):
                 person_pixels[label].append(pixel)
 
             best_person = {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}
-            for person in person_pixels:
-                mask = np.zeros(frames[n_camera][n_frame].shape[:2], np.uint8)
-                pixels = person_pixels[person]
-                waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
-                for x, y in pixels:
-                    if y < waist:
-                        mask[y, x] = 255
-                probabilities = []
-                for i_gmm in range(4):
-                    log_likelihood = 0
-                    for pixel in frames[n_camera][n_frame][mask == 255].tolist():
-                        log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][0]
-                    probabilities.append(log_likelihood / len(frames[n_camera][n_frame][mask == 255].tolist()))
+            for person0 in range(4):
+                for person in person_pixels:
+                    mask = np.zeros(frames[n_camera][n_frame].shape[:2], np.uint8)
+                    pixels = person_pixels[person]
+                    waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
+                    for x, y in pixels:
+                        if y < waist:
+                            mask[y, x] = 255
+                    hist = cv.calcHist([frames[n_camera][n_frame]], [0, 1, 2], mask, [256, 256, 256],
+                                       [0, 256, 0, 256, 0, 256])
+                    cv.normalize(hist, hist, alpha=0, beta=400, norm_type=cv.NORM_MINMAX)
 
-                best_person[person] = (np.argmax(probabilities), np.max(probabilities))
-            best_people.append(best_person)
-            # TODO: TUA MADRE
+                    similarity = cv.compareHist(histograms[person0], hist, cv.HISTCMP_CORREL)
+
+                    if similarity > best_person[person][1]:
+                        best_person[person] = (person0, similarity)
+            #
+            # for i_camera, cameras in enumerate(person_to_colors):
+            #     # for each person
+            #     for person in cameras:
+            #         # calculate the histogram
+            #         pixels = cameras[person]
+            #
+            #         mask = np.zeros(frames[i_camera][cam_to_frame[i_camera]].shape[:2], np.uint8)
+            #
+            #         waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
+            #
+            #         for x, y in pixels:
+            #             if y < waist:
+            #                 mask[y, x] = 255
+            #
+            #         hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0, 1, 2], mask, [8, 8, 8],
+            #                            [0, 256, 0, 256, 0, 256])
+            #         hist_size = 256
+            #         hist_range = (0, 256)
+            #         b_hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0], mask, [hist_size], hist_range)
+            #         g_hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [1], mask, [hist_size], hist_range)
+            #         r_hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [2], mask, [hist_size], hist_range)
+            #
+            #         hist_h = 400
+            #         cv.normalize(b_hist, b_hist, alpha=0, beta=hist_h, norm_type=cv.NORM_MINMAX)
+            #         cv.normalize(g_hist, g_hist, alpha=0, beta=hist_h, norm_type=cv.NORM_MINMAX)
+            #         cv.normalize(r_hist, r_hist, alpha=0, beta=hist_h, norm_type=cv.NORM_MINMAX)
+            #
+            #         histograms[i_camera][person] = [b_hist, g_hist, r_hist]
+            #
+            # # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
+            #
+            # # dictionary that for each camera tells us the person with the highest similarity
+            # # best_person = [{0: (0, 1), 1: (1, 1), 2: (2, 1), 3: (3, 1)},  # identity
+            # #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
+            # #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)},
+            # #                {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}]
+            # #
+            # # right_dictionary = histograms[0]
+            # #
+            # # for i_camera in range(len(histograms)):
+            # #     for person0 in right_dictionary:
+            # #         for person in best_person[i_camera]:
+            # #             similarity = cv.compareHist(histograms[i_camera][person], right_dictionary[person0],
+            # #                                         cv.HISTCMP_INTERSECT)
+            # #             if i_camera > 0:
+            # #                 if similarity > best_person[i_camera][person][1]:
+            # #                     best_person[i_camera][person] = (person0, similarity)
+            #
+            # # AT THIS POINT WE HAVE THE BEST PERSON FOR EACH CAMERA
+            #
+            # best_person = [
+            #     {0: (0, histograms[0][0]), 1: (1, histograms[0][1]), 2: (2, histograms[0][2]),
+            #      3: (3, histograms[0][3])},
+            #     {0: (2, histograms[1][0]), 1: (3, histograms[1][1]), 2: (0, histograms[1][2]),
+            #      3: (1, histograms[1][3])},
+            #     {0: (2, histograms[2][0]), 1: (0, histograms[2][1]), 2: (3, histograms[2][2]),
+            #      3: (1, histograms[2][3])},
+            #     {0: (1, histograms[3][0]), 1: (3, histograms[3][1]), 2: (2, histograms[3][2]),
+            #      3: (0, histograms[3][3])}]
+            #
+            # hists = []
+            # for i_person in range(4):
+            #     for i_camera in range(4):
+            #         b = np.zeros_like(best_person[0][0][1][0])
+            #         g = np.zeros_like(best_person[0][0][1][0])
+            #         r = np.zeros_like(best_person[0][0][1][0])
+            #         for person_i in range(4):
+            #             if best_person[i_camera][person_i][0] == i_person:
+            #                 b += best_person[i_camera][person_i][1][0]
+            #                 g += best_person[i_camera][person_i][1][1]
+            #                 r += best_person[i_camera][person_i][1][2]
+            #         plt.plot(b // 4, color='b')
+            #         plt.plot(g // 4, color='g')
+            #         plt.plot(r // 4, color='r')
+            #         plt.title(f"cam{i_camera} person{i_person}")
+            #         plt.show()
 
             frame_copy = frames[n_camera][n_frame].copy()
             for pixel, label in image_points:
                 cv.circle(frame_copy, pixel, 3, labels_to_color[best_person[label][0]], -1)
             show_image(frame_copy, "auto")
-
-        right_labels = []
-        for i_person in range(4):
-            probs = []
-            for i_camera in range(4):
-                probs.append(best_people[i_camera][i_person])
-            # save the most occurring person with the highest probability
-            right_labels.append(max(set(probs), key=probs.count))
 
 
 last_points = []
@@ -398,5 +471,5 @@ if __name__ == '__main__':
         background = average_images(imgs_list_background)
         backgrounds.append(background)
 
-    gaussian_mixture_models = get_gaussian_mixture_models()
-    start_online(gaussian_mixture_models)
+    all_histograms = get_histograms()
+    start_online(all_histograms)
