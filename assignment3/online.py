@@ -278,16 +278,23 @@ def get_gaussian_mixture_models():
 
     # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
 
-    for i_camera, pixels_color in enumerate(pixels_colors):
+    for i_camera, camera in enumerate(person_to_colors):
         # for each person
         frame = frames[i_camera][cam_to_frame[i_camera]]
-        for pixel, label, color in pixels_color:
+        for label in camera:
+            person_pixels = camera[label]
+            
             likes = []
             for gmm_n in range(4):
-                likes.append(gaussian_mixture_models[gmm_n].predict2(np.array([color], dtype=np.float32))[0])
-
+                likelihood = 0
+                for pixel in person_pixels:
+                    x, y = pixel
+                    color = frame[y, x]
+                    likelihood += gaussian_mixture_models[gmm_n].predict2(np.array([color], dtype=np.float32))[0][0]
+                likes.append(likelihood)
             max_verstappen = np.argmax(likes)
-            cv.circle(frame, pixel, 1, labels_to_color[max_verstappen], -1)
+            for pixel in person_pixels:
+                cv.circle(frame, pixel, 1, labels_to_color[max_verstappen], -1)
         show_image(frame, "frame" + str(i_camera))
 
 
@@ -333,8 +340,8 @@ def start_online(gaussian_mixture_models):
                 probabilities = []
                 for i_gmm in range(4):
                     log_likelihood = 0
-                    # for pixel in cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist():
-                    for pixel in frames[n_camera][n_frame][mask == 255].tolist():
+                    for pixel in cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist():
+                    # for pixel in frames[n_camera][n_frame][mask == 255].tolist():
                         log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][
                             0]
                     probabilities.append(log_likelihood / len(frames[n_camera][n_frame][mask == 255].tolist()))
