@@ -121,7 +121,26 @@ def reconstruct_voxels(n_frame):
                                   for x in visible_voxels], dtype=np.float32)
     compactness, labels, centers = cv.kmeans(
         voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
-
+    print("before", len(visible_voxels))
+    voxels_to_remove = []
+    for label, center in enumerate(centers):
+        print(f"doing label {label}")
+        filtered_list = [lst for lst, current_lab in zip(visible_voxels, labels) if current_lab == label]
+        # print("label numero ", label, filtered_list)
+        avg_dist_from_center = 0
+        for x, z, y in filtered_list:
+            avg_dist_from_center += distance.euclidean((x, y), center)
+        avg_dist_from_center = avg_dist_from_center / len(filtered_list)
+        for x, z, y in filtered_list:
+            if distance.euclidean((x, y), center) > avg_dist_from_center * 1.5:
+                voxels_to_remove.append([x,z,y])
+    for vox in voxels_to_remove:
+        visible_voxels.remove(vox)
+    print("after" ,len(visible_voxels))
+    voxels_to_cluster = np.array([[x[0], x[2]]
+                                    for x in visible_voxels], dtype=np.float32)
+    compactness, labels, centers = cv.kmeans(
+        voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
     print(f"Voxel Reconstruction completed in {time() - start_reconstruction} seconds.")
 
     return visible_voxels, labels
@@ -299,7 +318,9 @@ def reconstruct_all_voxels():
         compactness, labels, centers = cv.kmeans(
             voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
         print("before", len(visible_voxels))
+        voxels_to_remove = []
         for label, center in enumerate(centers):
+            print(f"doing label {label}")
             filtered_list = [lst for lst, current_lab in zip(visible_voxels, labels) if current_lab == label]
             # print("label numero ", label, filtered_list)
             avg_dist_from_center = 0
@@ -307,8 +328,10 @@ def reconstruct_all_voxels():
                 avg_dist_from_center += distance.euclidean((x, y), center)
             avg_dist_from_center = avg_dist_from_center / len(filtered_list)
             for x, z, y in filtered_list:
-                if distance.euclidean((x, y), center) > avg_dist_from_center:
-                    visible_voxels.remove([x,z,y])
+                if distance.euclidean((x, y), center) > avg_dist_from_center*1.5:
+                    voxels_to_remove.append([x,z,y])
+        for vox in voxels_to_remove:
+            visible_voxels.remove(vox)
         print("after" ,len(visible_voxels))
         voxels_to_cluster = np.array([[x[0], x[2]]
                                       for x in visible_voxels], dtype=np.float32)
