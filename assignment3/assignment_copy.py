@@ -1,16 +1,12 @@
-import glm
-import random
-import numpy as np
-import cv2 as cv
-from time import time
 import os
-
 from collections import Counter
-from sklearn.preprocessing import normalize
-from utils import *
-import matplotlib.pyplot as plt
-from scipy.spatial import distance
+from time import time
 
+import glm
+from scipy.spatial import distance
+from sklearn.preprocessing import normalize
+
+from utils import *
 
 show = True
 
@@ -22,13 +18,13 @@ criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
 labels_to_color = {0: (255, 0, 0), 1: (0, 255, 0),
                    2: (0, 0, 255), 3: (255, 0, 255)}
 
-cap = cv.VideoCapture(cameras_videos_info[1][2]) # video of camera 2
-retF, frame = cap.read() # get first frame (used for color model)
+cap = cv.VideoCapture(cameras_videos_info[1][2])  # video of camera 2
+retF, frame = cap.read()  # get first frame (used for color model)
 frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
 cap.release()
 
 MGGs = {'0': None, '1': None, '2': None, '3': None}
-cam_to_frame = {0 : 10, 1: 0, 2:41, 3: 52}
+cam_to_frame = {0: 10, 1: 0, 2: 41, 3: 52}
 
 # loading parameters of cam2 for color model
 camera_matrices = []
@@ -52,19 +48,20 @@ for i in range(4):
 
 plane = np.zeros((128, 128, 3))
 
-def get_mask(frame, camera_i):
 
+def get_mask(frame, camera_i):
     w, h, _ = frame.shape
     frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
     background_pixels_hsv = cv.cvtColor(
         backgrounds[camera_i], cv.COLOR_BGR2HSV)
     foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
 
-    hue, saturation, value = best_masks[str(camera_i+1)]
+    hue, saturation, value = best_masks[str(camera_i + 1)]
     best_mask = np.zeros((w, h), dtype=np.uint8)
     for x in range(foreground_hsv.shape[0]):
         for y in range(foreground_hsv.shape[1]):
-            if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
+            if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[
+                x, y, 2] > value:
                 best_mask[x, y] = 255
 
     best_mask = cv.morphologyEx(
@@ -82,16 +79,19 @@ def get_mask(frame, camera_i):
     cv.fillPoly(result, contours, color=255)
     return result
 
+
 def generate_grid(width, depth):
     # Generates the floor grid locations
     # You don't need to edit this function
     data, colors = [], []
     for x in range(width):
         for z in range(depth):
-            data.append([x*block_size - width/2, -
-                        block_size, z*block_size - depth/2])
-            colors.append([1.0, 1.0, 1.0] if (x+z) % 2 == 0 else [0, 0, 0])
+            data.append([x * block_size - width / 2, -
+            block_size, z * block_size - depth / 2])
+            colors.append([1.0, 1.0, 1.0] if (x + z) % 2 == 0 else [0, 0, 0])
     return data, colors
+
+
 def reconstruct_voxels(n_frame):
     all_visible_voxels = []
     all_labels = []
@@ -133,17 +133,18 @@ def reconstruct_voxels(n_frame):
         avg_dist_from_center = avg_dist_from_center / len(filtered_list)
         for x, z, y in filtered_list:
             if distance.euclidean((x, y), center) > avg_dist_from_center * 1.5:
-                voxels_to_remove.append([x,z,y])
+                voxels_to_remove.append([x, z, y])
     for vox in voxels_to_remove:
         visible_voxels.remove(vox)
-    print("after" ,len(visible_voxels))
+    print("after", len(visible_voxels))
     voxels_to_cluster = np.array([[x[0], x[2]]
-                                    for x in visible_voxels], dtype=np.float32)
+                                  for x in visible_voxels], dtype=np.float32)
     compactness, labels, centers = cv.kmeans(
         voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
     print(f"Voxel Reconstruction completed in {time() - start_reconstruction} seconds.")
 
     return visible_voxels, labels
+
 
 def set_voxel_positions(width, height, depth, n_frame):
     global gaussian_mixture_models
@@ -152,6 +153,7 @@ def set_voxel_positions(width, height, depth, n_frame):
     visible_voxels, labels = reconstruct_voxels(n_frame)
     best_people = []
     images_points = []
+    people = [[], [], [], []]
     for n_camera in range(4):
         image_points = []
 
@@ -183,18 +185,20 @@ def set_voxel_positions(width, height, depth, n_frame):
             for i_gmm in range(4):
                 log_likelihood = 0
                 for pixel in cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist():
-                # for pixel in frames[n_camera][n_frame][mask == 255].tolist():
+                    # for pixel in frames[n_camera][n_frame][mask == 255].tolist():
                     log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][
                         0]
                 probabilities.append(log_likelihood / len(frames[n_camera][n_frame][mask == 255].tolist()))
+            people[n_camera] = probabilities
 
-            best_person[person] = (np.argmax(probabilities), np.max(probabilities))
+        for i in range(4):
+            best_person[i] = (np.argmax(people[i]), np.max(people[i]))
         best_people.append(best_person)
 
     # best people is a list of dictionaries, each dictionary contains, for each person/label, the best cluster
     # number (of that camera) and the probability of that cluster
 
-    right_labels = []
+    right_labels = [-1, -1, -1, -1]
     for i_person in range(4):  # persona assoluta [label vera]
         best_label_and_prob = []
         for i_camera in range(4):  # camera
@@ -211,7 +215,7 @@ def set_voxel_positions(width, height, depth, n_frame):
         else:
             right_label = max(best_label_and_prob, key=lambda x: x[1])[0]
 
-        right_labels.append(right_label)
+        right_labels[i_person] = right_label
 
     frames_x = []
     for i_camera in range(4):
@@ -221,13 +225,13 @@ def set_voxel_positions(width, height, depth, n_frame):
                 a = np.where(right_labels == label)[0][0]
             else:
                 print(f"FAIL in {n_frame} with label {label}")
-                a = random.randint(0, len(right_labels) - 1)
+                a = np.setdiff1d(np.array([0, 1, 2, 3]), np.unique(right_labels))[0]
             cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
-    
+
         frames_x.append(frame_x)
     image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
                                     np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
-    
+
     show_image(image_to_show, f"frame {n_frame}")
     print(right_labels)
     colors = []
@@ -240,7 +244,8 @@ def set_voxel_positions(width, height, depth, n_frame):
         if labels[i_vox] in right_labels:
             colors.append(labels_to_color[np.where(right_labels == labels[i_vox])[0][0]])
         else:
-            colors.append(labels_to_color[random.randint(0, len(right_labels) - 1)])
+            a = np.setdiff1d(np.array([0, 1, 2, 3]), np.unique(right_labels))[0]
+            colors.append(labels_to_color[a])
 
     return visible_voxels, colors
 
@@ -294,6 +299,7 @@ def get_cam_rotation_matrices():
         cam_rotations.append(rot)
     return cam_rotations
 
+
 def reconstruct_all_voxels():
     all_visible_voxels = []
     all_labels = []
@@ -319,8 +325,6 @@ def reconstruct_all_voxels():
                 visible_voxels.append(
                     [x_voxels / 75, -z_voxels / 75, y_voxels / 75])
 
-        
-
         # COLORS
         voxels_to_cluster = np.array([[x[0], x[2]]
                                       for x in visible_voxels], dtype=np.float32)
@@ -338,11 +342,11 @@ def reconstruct_all_voxels():
                 avg_dist_from_center += distance.euclidean((x, y), center)
             avg_dist_from_center = avg_dist_from_center / len(filtered_list)
             for x, z, y in filtered_list:
-                if distance.euclidean((x, y), center) > avg_dist_from_center*1.5:
-                    voxels_to_remove.append([x,z,y])
+                if distance.euclidean((x, y), center) > avg_dist_from_center * 1.5:
+                    voxels_to_remove.append([x, z, y])
         for vox in voxels_to_remove:
             visible_voxels.remove(vox)
-        print("after" ,len(visible_voxels))
+        print("after", len(visible_voxels))
         voxels_to_cluster = np.array([[x[0], x[2]]
                                       for x in visible_voxels], dtype=np.float32)
         compactness, labels, centers = cv.kmeans(
@@ -353,14 +357,16 @@ def reconstruct_all_voxels():
     # end of reconstructions
     return all_visible_voxels, all_labels
 
+
 def create_cube(width, height, depth):
     "creates a solid with resolution 100x100x100 with the current inputs"
     cube = []
     for x in np.arange(-width, width, 80):
-        for y in np.arange(-depth//2, depth//2, 80):
+        for y in np.arange(-depth // 2, depth // 2, 80):
             for z in np.arange(-height, height, 80):
                 cube.append([x, y, z])
     return cube
+
 
 def get_gaussian_mixture_models():
     global lookup_table
@@ -410,14 +416,6 @@ def get_gaussian_mixture_models():
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
 
     best_person = [0, 1, 2, 3, 2, 3, 0, 1, 2, 0, 3, 1, 1, 3, 2, 0]
-    # {0: (0, []), 1: (1, histograms[0][1]), 2: (2, histograms[0][2]),
-    #  3: (3, histograms[0][3])},
-    # {0: (2, histograms[1][0]), 1: (3, histograms[1][1]), 2: (0, histograms[1][2]),
-    #  3: (1, histograms[1][3])},
-    # {0: (2, histograms[2][0]), 1: (0, histograms[2][1]), 2: (3, histograms[2][2]),
-    #  3: (1, histograms[2][3])},
-    # {0: (1, histograms[3][0]), 1: (3, histograms[3][1]), 2: (2, histograms[3][2]),
-    #  3: (0, histograms[3][3])}]
 
     person_training_data = [[], [], [], []]
     for i_camera, cameras in enumerate(person_to_colors):
@@ -447,11 +445,57 @@ def get_gaussian_mixture_models():
         gaussian_mixture_models[i_person].trainEM(np.array(data, dtype=np.float32))
 
     # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
+    # training the gaussian mixture models
+    for i_person in range(4):
+        # flatten the data
+        data = [item for sublist in person_training_data[i_person] for item in sublist]
+        # train the gaussian mixture model
+        gaussian_mixture_models[i_person].trainEM(np.array(data, dtype=np.float32))
+
+    frames_x = []
+
+    for i_camera, all_pixels_in_frame in enumerate(person_to_colors):
+        n_frame = cam_to_frame[i_camera]
+        frame_x = frames[i_camera][n_frame].copy()
+        frame_x_hsv = cv.cvtColor(frames[i_camera][n_frame], cv.COLOR_BGR2HSV)
+        for person in all_pixels_in_frame:
+            pixels_of_person = all_pixels_in_frame[person]
+            likelihoods = [0, 0, 0, 0]
+            probabilities = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+            puttanadio = [0, 0, 0, 0]
+            for pixel in pixels_of_person:
+                color = frame_x_hsv[pixel[1], pixel[0]]
+                color = [color[0], color[1], color[2]]
+                for gmm_i in range(4):
+                    mia_zia = gaussian_mixture_models[gmm_i].predict2(np.array(color, dtype=np.float32))
+                    likelihoods[gmm_i] += mia_zia[0][0]
+                    ps = np.array(mia_zia[1][0])
+                    max_verstappen = max(ps)
+                    if max_verstappen > puttanadio[gmm_i]:
+                        puttanadio[gmm_i] = max_verstappen
+                    probabilities[gmm_i] += mia_zia[1][0]
 
 
+            likelihoods = np.array(likelihoods) / len(pixels_of_person)
+            probabilities = np.array(probabilities) / len(pixels_of_person)
+            massimi = np.array([max(probabilities[i]) for i in range(4)])
+            best_label_by_prob = np.argmax(massimi)
+            best_label_by_puttanadio = np.argmax(puttanadio)
 
+            best_label = np.argmax(likelihoods)
+            print(f"prob: {best_label_by_prob}, likelihood: {best_label}, puttanadio: {best_label_by_puttanadio}")
+
+            for pixel in pixels_of_person:
+                cv.circle(frame_x, pixel, 2, labels_to_color[best_label], -1)
+
+        frames_x.append(frame_x)
+    image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
+                                    np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
+
+    show_image(image_to_show, "Training data")
 
     return gaussian_mixture_models
+
 
 def create_lookup_table(width, height, depth):
     "Returns the lookup table mapping each voxels to its correspongin 3D and 2D coordinates for each camera"
@@ -481,10 +525,11 @@ def create_lookup_table(width, height, depth):
             if x >= 0 and x < 644 and y >= 0 and y < 486:  # if the 2D pixel is in range of the frame
                 # store 2D and 3D coordinates
                 lookup_table[i, :, camera_i -
-                             1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]
+                                   1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]
 
     np.savez('data/lookup_table', lookup_table=lookup_table)
     return voxel_positions, lookup_table
+
 
 # print(create_lookup_table(1500, 3000, 3000)[1])
 # set_voxel_positions(1500, 3000,3000)
@@ -514,11 +559,11 @@ if exists:  # if lookup table already exists, load it
         lookup_table = file['lookup_table']
     voxel_positions = np.array(create_cube(
         3000, 6000, 6000), dtype=np.float32)
-    print(f"time to load/create lookup table: {time()-start_lookup}")
+    print(f"time to load/create lookup table: {time() - start_lookup}")
 else:  # if it does not, create it and save the file
     voxel_positions, lookup_table = create_lookup_table(
         3000, 6000, 6000)
-    print(f"time to load/create lookup table: {time()-start_lookup}")
+    print(f"time to load/create lookup table: {time() - start_lookup}")
 
 frames = []
 backgrounds = []
