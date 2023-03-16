@@ -220,17 +220,27 @@ def set_voxel_positions(width, height, depth, n_frame):
             if label in right_labels:
                 a = np.where(right_labels == label)[0][0]
             else:
-                print(f"FAIL in {n_frame}")
+                print(f"FAIL in {n_frame} with label {label}")
                 a = random.randint(0, len(right_labels) - 1)
             cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
+    
         frames_x.append(frame_x)
     image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
                                     np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
-
+    
     show_image(image_to_show, f"frame {n_frame}")
+    print(right_labels)
     colors = []
-    for label in labels:
-        colors.append(labels_to_color[label[0]])
+
+    # coloring using kmeans labels
+    # for label in labels:
+    #     colors.append(labels_to_color[label[0]])
+
+    for i_vox, vox in enumerate(visible_voxels):
+        if labels[i_vox] in right_labels:
+            colors.append(labels_to_color[np.where(right_labels == labels[i_vox])[0][0]])
+        else:
+            colors.append(labels_to_color[random.randint(0, len(right_labels) - 1)])
 
     return visible_voxels, colors
 
