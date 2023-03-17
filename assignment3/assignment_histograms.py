@@ -1,20 +1,15 @@
-import glm
-import random
-import numpy as np
-import cv2 as cv
-from time import time
 import os
+from time import time
 
-from collections import Counter
-from sklearn.preprocessing import normalize
-from utils import *
-import matplotlib.pyplot as plt
+import glm
 from scipy.spatial import distance
+from sklearn.preprocessing import normalize
 
+from utils import *
 
 show = True
 
-histograms = {0 : None, 1 : None, 2 : None, 3: None}
+histograms = {0: None, 1: None, 2: None, 3: None}
 block_size = 1.0
 n_frame = 0
 lookup_table = []
@@ -22,12 +17,12 @@ criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 10, 1.0)
 labels_to_color = {0: (255, 0, 0), 1: (0, 255, 0),
                    2: (0, 0, 255), 3: (255, 0, 255)}
 
-cap = cv.VideoCapture(cameras_videos_info[1][2]) # video of camera 2
-retF, frame = cap.read() # get first frame (used for color model)
+cap = cv.VideoCapture(cameras_videos_info[1][2])  # video of camera 2
+retF, frame = cap.read()  # get first frame (used for color model)
 frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
 cap.release()
 
-cam_to_frame = {0 : 10, 1: 0, 2:41, 3: 52}
+cam_to_frame = {0: 10, 1: 0, 2: 41, 3: 52}
 
 # loading parameters of cam2 for color model
 camera_matrices = []
@@ -51,35 +46,6 @@ for i in range(4):
 
 plane = np.zeros((128, 128, 3))
 
-def get_mask(frame, camera_i):
-
-    w, h, _ = frame.shape
-    frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
-    background_pixels_hsv = cv.cvtColor(
-        backgrounds[camera_i], cv.COLOR_BGR2HSV)
-    foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
-
-    hue, saturation, value = best_masks[str(camera_i+1)]
-    best_mask = np.zeros((w, h), dtype=np.uint8)
-    for x in range(foreground_hsv.shape[0]):
-        for y in range(foreground_hsv.shape[1]):
-            if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[x, y, 2] > value:
-                best_mask[x, y] = 255
-
-    best_mask = cv.morphologyEx(
-        best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (13, 13)))
-    best_mask = cv.morphologyEx(
-        best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
-
-    contours, _ = cv.findContours(
-        best_mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-
-    # Sort the remaining contours by size (largest first)
-    contours = sorted(contours, key=cv.contourArea, reverse=True)[:4]
-
-    result = np.zeros_like(best_mask)
-    cv.fillPoly(result, contours, color=255)
-    return result
 
 def generate_grid(width, depth):
     # Generates the floor grid locations
@@ -87,10 +53,12 @@ def generate_grid(width, depth):
     data, colors = [], []
     for x in range(width):
         for z in range(depth):
-            data.append([x*block_size - width/2, -
-                        block_size, z*block_size - depth/2])
-            colors.append([1.0, 1.0, 1.0] if (x+z) % 2 == 0 else [0, 0, 0])
+            data.append([x * block_size - width / 2, -
+            block_size, z * block_size - depth / 2])
+            colors.append([1.0, 1.0, 1.0] if (x + z) % 2 == 0 else [0, 0, 0])
     return data, colors
+
+
 def reconstruct_voxels(n_frame):
     all_visible_voxels = []
     all_labels = []
@@ -132,17 +100,18 @@ def reconstruct_voxels(n_frame):
         avg_dist_from_center = avg_dist_from_center / len(filtered_list)
         for x, z, y in filtered_list:
             if distance.euclidean((x, y), center) > avg_dist_from_center * 1.5:
-                voxels_to_remove.append([x,z,y])
+                voxels_to_remove.append([x, z, y])
     for vox in voxels_to_remove:
         visible_voxels.remove(vox)
-    print("after" ,len(visible_voxels))
+    print("after", len(visible_voxels))
     voxels_to_cluster = np.array([[x[0], x[2]]
-                                    for x in visible_voxels], dtype=np.float32)
+                                  for x in visible_voxels], dtype=np.float32)
     compactness, labels, centers = cv.kmeans(
         voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
     print(f"Voxel Reconstruction completed in {time() - start_reconstruction} seconds.")
 
     return visible_voxels, labels
+
 
 def set_voxel_positions(width, height, depth, n_frame):
     global histograms
@@ -151,10 +120,15 @@ def set_voxel_positions(width, height, depth, n_frame):
     visible_voxels, labels = reconstruct_voxels(n_frame)
     best_people = []
     images_points = []
-    hists = [{0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}]
-    
+    hists = [{0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None},
+             {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}]
+
+    counts = []
+    people_pixels = []
     for n_camera in range(4):
         image_points = []
+        frame_camera = frames[n_camera][n_frame]
+        mask = masks_all_frames[n_camera][n_frame]
 
         for i_label, vox in enumerate(visible_voxels):
             x_3d, y_3d, z_3d = (int(vox[0] * 75), int(vox[2] * 75), int(-vox[1] * 75))
@@ -167,103 +141,54 @@ def set_voxel_positions(width, height, depth, n_frame):
             image_points.append(
                 ((x_2d, y_2d), labels[i_label][0]))
         images_points.append(image_points)
-        all_pixels = []
-        for pixel, label in image_points:
-            all_pixels.append(pixel)
-        all_pixels = np.array(all_pixels, dtype=np.float32)
-        compactness, labels, centers = cv.kmeans(
-        all_pixels, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
-        frame_copy = frames[n_camera][n_frame].copy()
-        for center in centers:
-            x, y = center
-            x = int(x)
-            y = int(y)
-            cv.circle(frame_copy, (x, y), 5, (255,0,0), -1)
-        show_image(frame_copy)
         person_pixels = {0: [], 1: [], 2: [], 3: []}
         for pixel, label in image_points:
             person_pixels[label].append(pixel)
+        people_pixels.append(person_pixels)
+        count, _, _, _ = cv.connectedComponentsWithStats(mask, connectivity=8)
+        counts.append(count)
 
-        best_person = {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}
-        for person in person_pixels:
-            chosen_frame = cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)
-            mask = np.zeros(frames[n_camera][n_frame].shape[:2], np.uint8)
-            pixels = person_pixels[person]
-            waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
-            for x, y in pixels:
-                if y < waist:
-                    mask[y, x] = 255
-            similarities = []
-            hist = cv.calcHist([chosen_frame], [0, 1], mask, [60, 60],
-                               [0, 180, 0, 255])
-            hist = cv.normalize(hist, hist, alpha=0, beta = 100, norm_type=cv.NORM_MINMAX)
-            hists[n_camera][person] =  hist
-            
-            for i_histogram in range(4):
-                similarities.append(cv.compareHist(histograms[i_histogram], hist, cv.HISTCMP_CORREL))
+    n_camera_with_best_separation = np.argmax(counts)
 
-            best_person[person] = (np.argmax(similarities), np.max(similarities)) # best person is a map for an individual camera, given a wrong label it maps to a tuple (best label, score)
-        best_people.append(best_person)
+    # best_person = {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}
+    best_person = [-1, -1, -1, -1]
+    frame_camera = frames[n_camera_with_best_separation][n_frame]
+    for person in people_pixels[n_camera_with_best_separation]:
+        # chosen_frame = cv.cvtColor(frame_camera, cv.COLOR_BGR2HSV)
+        mask = np.zeros(frame_camera.shape[:2], np.uint8)
+        pixels = people_pixels[n_camera_with_best_separation][person]
+        waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
+        for x, y in pixels:
+            if y < waist:
+                mask[y, x] = 255
+        similarities = []
+        frame_in_hsv = cv.cvtColor(frame_camera, cv.COLOR_BGR2HSV)
+        hist = cv.calcHist([frame_in_hsv], [0, 1], mask, [16, 16],
+                           [0, 180, 140, 255])
+        cv.normalize(hist, hist, alpha=0, beta=400, norm_type=cv.NORM_MINMAX)
+        hists[n_camera_with_best_separation][person] = hist
 
-    # create a mapping for according the 4 cameras
-    # map_camlabel_to_label = [[0, 1, 2, 3], [2, 3, 0, 1], [2, 0, 3, 1], [1, 3, 2, 0]]
-    # for i_camera, camera in enumerate(hists):
-    #     for ground_truth in camera:
-    #         similarities = []
-    #         for candidate in range(4):
-    #             similarities.append(cv.compareHist(hists[0][ground_truth], hists[i_camera][candidate], cv.HISTCMP_CORREL))
-    #         map_camlabel_to_label[i_camera][ground_truth] = np.argmax(similarities)
-    # print(map_camlabel_to_label)
-    # best people is a list of dictionaries, each dictionary contains, for each person/label, the best cluster
-    # number (of that camera) and the probability of that cluster
-    # print(best_people)
-    right_labels = []
-    for i_person in range(4):  # persona assoluta [label vera]
-        best_label_and_prob = []
-        for i_camera in range(4):  # camera
-            best_label_and_prob.append(best_people[i_camera][i_person])
-        # take the one with the first parameter (the label) that appear the most
-
-        occurrences = Counter(x[0] for x in best_label_and_prob)
-        first_two = occurrences.most_common(2)
-
-        if len(first_two) == 1:
-            right_label = first_two[0][0]
-        elif first_two[0][1] != first_two[1][1]:
-            right_label = first_two[0][0]
-        else:
-            right_label = max(best_label_and_prob, key=lambda x: x[1])[0]
-
-        right_labels.append(right_label)
+        for i_histogram in range(4):
+            similarities.append(cv.compareHist(histograms[i_histogram], hist, cv.HISTCMP_CORREL))
+        # best person is a map for an individual camera, given a wrong label it maps to a tuple (best label, score)
+        best_person[person] = np.argmax(similarities)
 
     frames_x = []
     for i_camera in range(4):
         frame_x = frames[i_camera][n_frame].copy()
         for pixel, label in images_points[i_camera]:
-            if label in right_labels:
-                a = np.where(right_labels == label)[0][0]
-            else:
-                # print(f"FAIL in {n_frame} with label {label}")
-                a = random.randint(0, len(right_labels) - 1)
-            cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
-    
+            cv.circle(frame_x, pixel, 2, labels_to_color[best_person[label]], -1)
         frames_x.append(frame_x)
     image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
                                     np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
-    
+
     show_image(image_to_show, f"frame {n_frame}")
-    print(right_labels)
+
     colors = []
 
-    # coloring using kmeans labels
-    # for label in labels:
-    #     colors.append(labels_to_color[label[0]])
-
     for i_vox, vox in enumerate(visible_voxels):
-        if labels[i_vox] in right_labels:
-            colors.append(labels_to_color[np.where(right_labels == labels[i_vox])[0][0]])
-        else:
-            colors.append(labels_to_color[random.randint(0, len(right_labels) - 1)])
+        color = labels_to_color[best_person[labels[i_vox][0]]]
+        colors.append((color[2], color[1], color[0]))
 
     return visible_voxels, colors
 
@@ -317,6 +242,7 @@ def get_cam_rotation_matrices():
         cam_rotations.append(rot)
     return cam_rotations
 
+
 def reconstruct_all_voxels():
     all_visible_voxels = []
     all_labels = []
@@ -342,8 +268,6 @@ def reconstruct_all_voxels():
                 visible_voxels.append(
                     [x_voxels / 75, -z_voxels / 75, y_voxels / 75])
 
-        
-
         # COLORS
         voxels_to_cluster = np.array([[x[0], x[2]]
                                       for x in visible_voxels], dtype=np.float32)
@@ -361,11 +285,11 @@ def reconstruct_all_voxels():
                 avg_dist_from_center += distance.euclidean((x, y), center)
             avg_dist_from_center = avg_dist_from_center / len(filtered_list)
             for x, z, y in filtered_list:
-                if distance.euclidean((x, y), center) > avg_dist_from_center*1.5:
-                    voxels_to_remove.append([x,z,y])
+                if distance.euclidean((x, y), center) > avg_dist_from_center * 1.5:
+                    voxels_to_remove.append([x, z, y])
         for vox in voxels_to_remove:
             visible_voxels.remove(vox)
-        print("after" ,len(visible_voxels))
+        print("after", len(visible_voxels))
         voxels_to_cluster = np.array([[x[0], x[2]]
                                       for x in visible_voxels], dtype=np.float32)
         compactness, labels, centers = cv.kmeans(
@@ -376,14 +300,16 @@ def reconstruct_all_voxels():
     # end of reconstructions
     return all_visible_voxels, all_labels
 
+
 def create_cube(width, height, depth):
     "creates a solid with resolution 100x100x100 with the current inputs"
     cube = []
-    for x in np.arange(-width, width, 40):
-        for y in np.arange(-depth//2, depth//2, 80):
+    for x in np.arange(-width, width, 80):
+        for y in np.arange(-depth // 2, depth // 2, 80):
             for z in np.arange(-height, height, 80):
                 cube.append([x, y, z])
     return cube
+
 
 def get_histograms():
     global lookup_table
@@ -435,26 +361,17 @@ def get_histograms():
             person_to_colors[i_camera][label].append(pixel)
 
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
-    # {0: (0, []), 1: (1, histograms[0][1]), 2: (2, histograms[0][2]),
-    #  3: (3, histograms[0][3])},
-    # {0: (2, histograms[1][0]), 1: (3, histograms[1][1]), 2: (0, histograms[1][2]),
-    #  3: (1, histograms[1][3])},
-    # {0: (2, histograms[2][0]), 1: (0, histograms[2][1]), 2: (3, histograms[2][2]),
-    #  3: (1, histograms[2][3])},
-    # {0: (1, histograms[3][0]), 1: (3, histograms[3][1]), 2: (2, histograms[3][2]),
-    #  3: (0, histograms[3][3])}]
 
-    histograms_all_cameras = [{0 : None, 1 : None, 2 : None, 3: None},
-                           {0 : None, 1 : None, 2 : None, 3: None}, 
-                            {0 : None, 1 : None, 2 : None, 3: None},
-                             {0 : None, 1 : None, 2 : None, 3: None}]
+    histograms_all_cameras = [{0: None, 1: None, 2: None, 3: None},
+                              {0: None, 1: None, 2: None, 3: None},
+                              {0: None, 1: None, 2: None, 3: None},
+                              {0: None, 1: None, 2: None, 3: None}]
 
     for i_camera, cameras in enumerate(person_to_colors):
         # for each person
-        chosen_frame = cv.cvtColor(frames[i_camera][cam_to_frame[i_camera]], cv.COLOR_BGR2HSV)
         for person in cameras:
-            pixels = cameras[person] # pixels of the corresponding person
-            mask = np.zeros(chosen_frame.shape[:2], np.uint8)
+            pixels = cameras[person]  # pixels of the corresponding person
+            mask = np.zeros(frames[i_camera][cam_to_frame[i_camera]].shape[:2], np.uint8)
 
             waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
 
@@ -463,53 +380,22 @@ def get_histograms():
             for x, y in pixels:
                 if y < waist:
                     mask[y, x] = 255
-            hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0, 1], mask, [60, 60],
-                               [0, 180, 0, 255])
-            hist = cv.normalize(hist, hist, alpha=0, beta = 100, norm_type=cv.NORM_MINMAX)
+            frame_in_hsv = cv.cvtColor(frames[i_camera][cam_to_frame[i_camera]], cv.COLOR_BGR2HSV)
+            hist = cv.calcHist([frame_in_hsv], [0, 1], mask, [16, 16],
+                               [0, 180, 140, 255])
+            cv.normalize(hist, hist, alpha=0, beta=400, norm_type=cv.NORM_MINMAX)
             histograms_all_cameras[i_camera][person] = hist
     for person in range(4):
         hists = []
         for camera_i in range(4):
             hists.append(histograms_all_cameras[camera_i][person])
         combined = np.add(hists[0], np.add(hists[1], np.add(hists[2], hists[3])))
-        combined = cv.normalize(combined, combined, alpha=0, beta = 100, norm_type=cv.NORM_MINMAX)
+        combined = cv.normalize(combined, combined, alpha=0, beta=400, norm_type=cv.NORM_MINMAX)
         histograms[person] = combined
 
-    # trying to match cameras
-    # map_camlabel_to_label = [[0, 1, 2, 3], [2, 3, 0, 1], [2, 0, 3, 1], [1, 3, 2, 0]]
-    # for i_camera, camera in enumerate(histograms_all_cameras):
-    #     for ground_truth in camera:
-    #         similarities = []
-    #         for candidate in range(4):
-    #             similarities.append(cv.compareHist(histograms_all_cameras[0][ground_truth], histograms_all_cameras[i_camera][candidate], cv.HISTCMP_CORREL))
-    #         print(similarities)
-    #         map_camlabel_to_label[i_camera][ground_truth] = np.argmax(similarities)
-    # print(map_camlabel_to_label)
-    # trying out training
-
-    # for i_camera, cameras in enumerate(person_to_colors):
-    #     # for each person
-    #     chosen_frame = frames[i_camera][cam_to_frame[i_camera]]
-    #     for person in cameras:
-    #         pixels = cameras[person] # pixels of the corresponding person
-    #         mask = np.zeros(chosen_frame.shape[:2], np.uint8)
-
-    #         waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
-
-    #         for x, y in pixels:
-    #             if y < waist:
-    #                 mask[y, x] = 255
-    #         hist = cv.calcHist([frames[i_camera][cam_to_frame[i_camera]]], [0, 1, 2], mask, [256, 256, 256],
-    #                            [0, 256, 0, 256, 0, 256])
-    #         output = cv.bitwise_and(frames[i_camera][cam_to_frame[i_camera]],frames[i_camera][cam_to_frame[i_camera]], mask = mask)
-    #         show_image(output)
-    #         similarities = []
-    #         for i_histogram in range(4):
-    #             similarities.append(cv.compareHist(histograms[i_histogram], hist, cv.HISTCMP_CORREL ))
-    #         print(similarities) 
-    #         print(f"For camera {i_camera}: best guess = {np.argmax(similarities)}, similarity = {np.max(similarities)}")
-        
     return histograms
+
+
 def create_lookup_table(width, height, depth):
     "Returns the lookup table mapping each voxels to its correspongin 3D and 2D coordinates for each camera"
     "Inputs are for the placement of the solid for the reconstruction"
@@ -538,31 +424,11 @@ def create_lookup_table(width, height, depth):
             if x >= 0 and x < 644 and y >= 0 and y < 486:  # if the 2D pixel is in range of the frame
                 # store 2D and 3D coordinates
                 lookup_table[i, :, camera_i -
-                             1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]
+                                   1] = [int(pos[0]), int(pos[1]), int(pos[2]), int(x), int(y)]
 
     np.savez('data/lookup_table', lookup_table=lookup_table)
     return voxel_positions, lookup_table
 
-# print(create_lookup_table(1500, 3000, 3000)[1])
-# set_voxel_positions(1500, 3000,3000)
-
-# show_image(mask1[0], "jnas")
-# show_image(mask2[0], "jnas")
-# show_image(mask3[0], "jnas")
-# show_image(mask4[0], "jnas")
-camera_matrixes = []
-dist_coeffs = []
-rvecs_extr = []
-tvecs_extr = []
-
-# for i in range(4):
-#     s = cv.FileStorage(
-#         f"./data/cam{i+1}/config.xml", cv.FileStorage_READ)
-#     camera_matrixes.append(s.getNode('camera_matrix').mat())
-#     dist_coeffs.append(s.getNode('dist_coeffs').mat())
-#     rvecs_extr.append(s.getNode('rvec_extr').mat())
-#     tvecs_extr.append(s.getNode('tvec_extr').mat())
-#     s.release()
 
 start_lookup = time()
 exists = os.path.isfile('./data/lookup_table.npz')
@@ -571,11 +437,11 @@ if exists:  # if lookup table already exists, load it
         lookup_table = file['lookup_table']
     voxel_positions = np.array(create_cube(
         3000, 6000, 6000), dtype=np.float32)
-    print(f"time to load/create lookup table: {time()-start_lookup}")
+    print(f"time to load/create lookup table: {time() - start_lookup}")
 else:  # if it does not, create it and save the file
     voxel_positions, lookup_table = create_lookup_table(
         3000, 6000, 6000)
-    print(f"time to load/create lookup table: {time()-start_lookup}")
+    print(f"time to load/create lookup table: {time() - start_lookup}")
 
 frames = []
 backgrounds = []
