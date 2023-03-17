@@ -1,5 +1,4 @@
 import os
-from collections import Counter
 from time import time
 
 import glm
@@ -9,6 +8,8 @@ from sklearn.preprocessing import normalize
 from utils import *
 
 show = True
+
+immagini = []
 
 gaussian_mixture_models = None
 block_size = 1.0
@@ -47,37 +48,6 @@ for i in range(4):
     s.release()
 
 plane = np.zeros((128, 128, 3))
-
-
-def get_mask(frame, camera_i):
-    w, h, _ = frame.shape
-    frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
-    background_pixels_hsv = cv.cvtColor(
-        backgrounds[camera_i], cv.COLOR_BGR2HSV)
-    foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
-
-    hue, saturation, value = best_masks[str(camera_i + 1)]
-    best_mask = np.zeros((w, h), dtype=np.uint8)
-    for x in range(foreground_hsv.shape[0]):
-        for y in range(foreground_hsv.shape[1]):
-            if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[
-                x, y, 2] > value:
-                best_mask[x, y] = 255
-
-    best_mask = cv.morphologyEx(
-        best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (13, 13)))
-    best_mask = cv.morphologyEx(
-        best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5)))
-
-    contours, _ = cv.findContours(
-        best_mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-
-    # Sort the remaining contours by size (largest first)
-    contours = sorted(contours, key=cv.contourArea, reverse=True)[:4]
-
-    result = np.zeros_like(best_mask)
-    cv.fillPoly(result, contours, color=255)
-    return result
 
 
 def generate_grid(width, depth):
@@ -149,13 +119,17 @@ def reconstruct_voxels(n_frame):
 def set_voxel_positions(width, height, depth, n_frame):
     global gaussian_mixture_models
     global lookup_table
-    # global frames
+    global immagini
+
     visible_voxels, labels = reconstruct_voxels(n_frame)
-    best_people = []
     images_points = []
-    people = [[], [], [], []]
+    counts = []
+    people_pixels = []
+
     for n_camera in range(4):
         image_points = []
+        frame_camera = frames[n_camera][n_frame]
+        mask = masks_all_frames[n_camera][n_frame]
 
         for i_label, vox in enumerate(visible_voxels):
             x_3d, y_3d, z_3d = (int(vox[0] * 75), int(vox[2] * 75), int(-vox[1] * 75))
@@ -172,80 +146,73 @@ def set_voxel_positions(width, height, depth, n_frame):
         person_pixels = {0: [], 1: [], 2: [], 3: []}
         for pixel, label in image_points:
             person_pixels[label].append(pixel)
+        people_pixels.append(person_pixels)
+        count, _, _, _ = cv.connectedComponentsWithStats(mask, connectivity=8)
+        counts.append(count)
 
-        best_person = {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}
-        for person in person_pixels:
-            mask = np.zeros(frames[n_camera][n_frame].shape[:2], np.uint8)
-            pixels = person_pixels[person]
-            waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
-            for x, y in pixels:
-                if y < waist:
-                    mask[y, x] = 255
-            probabilities = []
-            for i_gmm in range(4):
-                log_likelihood = 0
-                for pixel in cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist():
-                    # for pixel in frames[n_camera][n_frame][mask == 255].tolist():
-                    log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][
-                        0]
-                probabilities.append(log_likelihood / len(frames[n_camera][n_frame][mask == 255].tolist()))
-            people[n_camera] = probabilities
-
-        for i in range(4):
-            best_person[i] = (np.argmax(people[i]), np.max(people[i]))
-        best_people.append(best_person)
+    n_camera_with_best_separation = np.argmax(counts)
+    print(max(counts))
+    best_person = [(-1, -1), (-1, -1), (-1, -1), (-1, -1)]
+    frame_camera = frames[n_camera_with_best_separation][n_frame]
+    for person in people_pixels[n_camera_with_best_separation]:
+        # chosen_frame = cv.cvtColor(frame_camera, cv.COLOR_BGR2HSV)
+        mask = np.zeros(frame_camera.shape[:2], np.uint8)
+        pixels = people_pixels[n_camera_with_best_separation][person]
+        waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
+        for x, y in pixels:
+            if y < waist:
+                mask[y, x] = 255
+        probabilities = []
+        for i_gmm in range(4):
+            log_likelihood = 0
+            for pixel in cv.cvtColor(frames[n_camera_with_best_separation][n_frame], cv.COLOR_BGR2HSV)[
+                mask == 255].tolist():
+                log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][
+                    0]
+            probabilities.append(
+                log_likelihood / len(frames[n_camera_with_best_separation][n_frame][mask == 255].tolist()))
+        # people[n_camera_with_best_separation] = probabilities
+        best_person[person] = (np.argmax(probabilities), max(probabilities))
 
     # best people is a list of dictionaries, each dictionary contains, for each person/label, the best cluster
     # number (of that camera) and the probability of that cluster
 
-    right_labels = [-1, -1, -1, -1]
-    for i_person in range(4):  # persona assoluta [label vera]
-        best_label_and_prob = []
-        for i_camera in range(4):  # camera
-            best_label_and_prob.append(best_people[i_camera][i_person])
-        # take the one with the first parameter (the label) that appear the most
+    # get only the unique values of the best person
+    unique_best_person = np.unique([x[0] for x in best_person])
+    if len(unique_best_person) < 4:
+        count = [0, 0, 0, 0]
+        missing_person = [x for x in range(4) if x not in unique_best_person][0]
+        for person, _ in best_person:
+            if person in unique_best_person:
+                count[person] += 1
+        for person in range(4):
+            if count[person] > 1:
+                probs_of_person = []
+                for x in best_person:
+                    if x[0] == person:
+                        probs_of_person.append(x[1])
+                    else:
+                        probs_of_person.append(-3000)
 
-        occurrences = Counter(x[0] for x in best_label_and_prob)
-        first_two = occurrences.most_common(2)
-
-        if len(first_two) == 1:
-            right_label = first_two[0][0]
-        elif first_two[0][1] != first_two[1][1]:
-            right_label = first_two[0][0]
-        else:
-            right_label = max(best_label_and_prob, key=lambda x: x[1])[0]
-
-        right_labels[i_person] = right_label
+                index_of_missing_person = np.argmax(probs_of_person)
+                best_person[index_of_missing_person] = (missing_person, max(probs_of_person))
 
     frames_x = []
     for i_camera in range(4):
         frame_x = frames[i_camera][n_frame].copy()
         for pixel, label in images_points[i_camera]:
-            if label in right_labels:
-                a = np.where(right_labels == label)[0][0]
-            else:
-                print(f"FAIL in {n_frame} with label {label}")
-                a = np.setdiff1d(np.array([0, 1, 2, 3]), np.unique(right_labels))[0]
-            cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
-
+            cv.circle(frame_x, pixel, 2, labels_to_color[best_person[label][0]], -1)
         frames_x.append(frame_x)
     image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
                                     np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
+    immagini.append(image_to_show)
+    # show_image(image_to_show, f"frame {n_frame}")
 
-    show_image(image_to_show, f"frame {n_frame}")
-    print(right_labels)
     colors = []
 
-    # coloring using kmeans labels
-    # for label in labels:
-    #     colors.append(labels_to_color[label[0]])
-
     for i_vox, vox in enumerate(visible_voxels):
-        if labels[i_vox] in right_labels:
-            colors.append(labels_to_color[np.where(right_labels == labels[i_vox])[0][0]])
-        else:
-            a = np.setdiff1d(np.array([0, 1, 2, 3]), np.unique(right_labels))[0]
-            colors.append(labels_to_color[a])
+        color = labels_to_color[best_person[labels[i_vox][0]][0]]
+        colors.append((color[2], color[1], color[0]))
 
     return visible_voxels, colors
 
@@ -388,7 +355,6 @@ def get_gaussian_mixture_models():
 
         image_points = []
         chosen_frame = cam_to_frame[i_camera]
-        x_3d, y_3d, z_3d = 0, 0, 0
 
         for i_label, vox in enumerate(visible_voxels):
             x_3d, y_3d, z_3d = (int(vox[0] * 75), int(vox[2] * 75), int(-vox[1] * 75))
@@ -452,48 +418,6 @@ def get_gaussian_mixture_models():
         # train the gaussian mixture model
         gaussian_mixture_models[i_person].trainEM(np.array(data, dtype=np.float32))
 
-    frames_x = []
-
-    for i_camera, all_pixels_in_frame in enumerate(person_to_colors):
-        n_frame = cam_to_frame[i_camera]
-        frame_x = frames[i_camera][n_frame].copy()
-        frame_x_hsv = cv.cvtColor(frames[i_camera][n_frame], cv.COLOR_BGR2HSV)
-        for person in all_pixels_in_frame:
-            pixels_of_person = all_pixels_in_frame[person]
-            likelihoods = [0, 0, 0, 0]
-            probabilities = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
-            puttanadio = [0, 0, 0, 0]
-            for pixel in pixels_of_person:
-                color = frame_x_hsv[pixel[1], pixel[0]]
-                color = [color[0], color[1], color[2]]
-                for gmm_i in range(4):
-                    mia_zia = gaussian_mixture_models[gmm_i].predict2(np.array(color, dtype=np.float32))
-                    likelihoods[gmm_i] += mia_zia[0][0]
-                    ps = np.array(mia_zia[1][0])
-                    max_verstappen = max(ps)
-                    if max_verstappen > puttanadio[gmm_i]:
-                        puttanadio[gmm_i] = max_verstappen
-                    probabilities[gmm_i] += mia_zia[1][0]
-
-
-            likelihoods = np.array(likelihoods) / len(pixels_of_person)
-            probabilities = np.array(probabilities) / len(pixels_of_person)
-            massimi = np.array([max(probabilities[i]) for i in range(4)])
-            best_label_by_prob = np.argmax(massimi)
-            best_label_by_puttanadio = np.argmax(puttanadio)
-
-            best_label = np.argmax(likelihoods)
-            print(f"prob: {best_label_by_prob}, likelihood: {best_label}, puttanadio: {best_label_by_puttanadio}")
-
-            for pixel in pixels_of_person:
-                cv.circle(frame_x, pixel, 2, labels_to_color[best_label], -1)
-
-        frames_x.append(frame_x)
-    image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
-                                    np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
-
-    show_image(image_to_show, "Training data")
-
     return gaussian_mixture_models
 
 
@@ -530,27 +454,6 @@ def create_lookup_table(width, height, depth):
     np.savez('data/lookup_table', lookup_table=lookup_table)
     return voxel_positions, lookup_table
 
-
-# print(create_lookup_table(1500, 3000, 3000)[1])
-# set_voxel_positions(1500, 3000,3000)
-
-# show_image(mask1[0], "jnas")
-# show_image(mask2[0], "jnas")
-# show_image(mask3[0], "jnas")
-# show_image(mask4[0], "jnas")
-camera_matrixes = []
-dist_coeffs = []
-rvecs_extr = []
-tvecs_extr = []
-
-# for i in range(4):
-#     s = cv.FileStorage(
-#         f"./data/cam{i+1}/config.xml", cv.FileStorage_READ)
-#     camera_matrixes.append(s.getNode('camera_matrix').mat())
-#     dist_coeffs.append(s.getNode('dist_coeffs').mat())
-#     rvecs_extr.append(s.getNode('rvec_extr').mat())
-#     tvecs_extr.append(s.getNode('tvec_extr').mat())
-#     s.release()
 
 start_lookup = time()
 exists = os.path.isfile('./data/lookup_table.npz')
@@ -590,3 +493,12 @@ for camera_i in range(4):
     backgrounds.append(background)
 
 gaussian_mixture_models = get_gaussian_mixture_models()
+
+for f in range(9, 271):
+
+    _, _ = set_voxel_positions(1, 2, 3, f)
+
+
+    np.savez('data/immagini', immagini=immagini)
+
+#fails 62, 80, 84, 87, 102, 111, 113, 124, 132, 133, 134, 137, 168, 184, 185, 186, 189, 234, 238, 239, 247,

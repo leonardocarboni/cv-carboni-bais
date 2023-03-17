@@ -2,14 +2,20 @@ import os
 from time import time
 
 import glm
+import matplotlib
+import matplotlib.pyplot as plt
 from scipy.spatial import distance
 from sklearn.preprocessing import normalize
 
 from utils import *
 
+matplotlib.use('TkAgg')
+
 show = True
 
-histograms = {0: None, 1: None, 2: None, 3: None}
+# TODO: remove
+immagini = []
+histograms = {0: [[], [], []], 1: [[], [], []], 2: [[], [], []], 3: [[], [], []]}
 block_size = 1.0
 n_frame = 0
 lookup_table = []
@@ -45,6 +51,27 @@ for i in range(4):
     s.release()
 
 plane = np.zeros((128, 128, 3))
+
+
+def plot_histogram(image, title, hist_flag, mask=None):
+    channels = cv.split(image)
+    colors = ("b", "g", "r")
+    if hist_flag:
+        plt.figure()
+        plt.title(title)
+        plt.xlabel("Bins")
+        plt.ylabel("# of Pixels")
+    hist = []
+    # loop over the image channels
+    for (chan, color) in zip(channels, colors):
+        # create a histogram for the current channel and plot it
+        hist = cv.calcHist([chan], [0], mask, [256], [0, 256])
+        hist = cv.normalize(hist, hist).flatten()
+        if hist_flag:
+            plt.xlim([0, 256])
+            plt.plot(hist, color=color)
+
+    return hist
 
 
 def generate_grid(width, depth):
@@ -116,15 +143,19 @@ def reconstruct_voxels(n_frame):
 def set_voxel_positions(width, height, depth, n_frame):
     global histograms
     global lookup_table
-    # global frames
+    global immagini
+
     visible_voxels, labels = reconstruct_voxels(n_frame)
     best_people = []
     images_points = []
-    hists = [{0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None},
-             {0: None, 1: None, 2: None, 3: None}, {0: None, 1: None, 2: None, 3: None}]
+    hists = [{0: [[], [], []], 1: [[], [], []], 2: [[], [], []], 3: [[], [], []]},
+             {0: [[], [], []], 1: [[], [], []], 2: [[], [], []], 3: [[], [], []]},
+             {0: [[], [], []], 1: [[], [], []], 2: [[], [], []], 3: [[], [], []]},
+             {0: [[], [], []], 1: [[], [], []], 2: [[], [], []], 3: [[], [], []]}]
 
     counts = []
     people_pixels = []
+
     for n_camera in range(4):
         image_points = []
         frame_camera = frames[n_camera][n_frame]
@@ -161,17 +192,24 @@ def set_voxel_positions(width, height, depth, n_frame):
         for x, y in pixels:
             if y < waist:
                 mask[y, x] = 255
-        similarities = []
-        frame_in_hsv = cv.cvtColor(frame_camera, cv.COLOR_BGR2HSV)
-        hist = cv.calcHist([frame_in_hsv], [0, 1], mask, [16, 16],
-                           [0, 180, 140, 255])
-        cv.normalize(hist, hist, alpha=0, beta=400, norm_type=cv.NORM_MINMAX)
-        hists[n_camera_with_best_separation][person] = hist
+        similarities = [[], [], [], []]
+        # frame_in_hsv = cv.cvtColor(frame_camera, cv.COLOR_BGR2HSV)
+        for i_channel, channel in enumerate(["b", "g", "r"]):
+            hist = cv.calcHist([frame_camera], [i_channel], mask, [256], [0, 255])
+            cv.normalize(hist, hist).flatten()
+
+            hists[n_camera_with_best_separation][person][i_channel] = np.array(hist, dtype=np.float32)
 
         for i_histogram in range(4):
-            similarities.append(cv.compareHist(histograms[i_histogram], hist, cv.HISTCMP_CORREL))
+            for i_channel in range(3):
+                similarities[i_histogram].append(cv.compareHist(hists[n_camera_with_best_separation][person][i_channel],
+                                                                histograms[i_histogram][i_channel],
+                                                                cv.HISTCMP_CORREL))
+                plt.plot(histograms[i_histogram][i_channel])
+                plt.plot(hists[n_camera_with_best_separation][person][i_channel])
+                plt.show()
         # best person is a map for an individual camera, given a wrong label it maps to a tuple (best label, score)
-        best_person[person] = np.argmax(similarities)
+        best_person[person] = np.argmax([np.mean(x) for x in similarities])
 
     frames_x = []
     for i_camera in range(4):
@@ -181,6 +219,7 @@ def set_voxel_positions(width, height, depth, n_frame):
         frames_x.append(frame_x)
     image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
                                     np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
+
 
     show_image(image_to_show, f"frame {n_frame}")
 
@@ -362,12 +401,13 @@ def get_histograms():
 
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
 
-    histograms_all_cameras = [{0: None, 1: None, 2: None, 3: None},
-                              {0: None, 1: None, 2: None, 3: None},
-                              {0: None, 1: None, 2: None, 3: None},
-                              {0: None, 1: None, 2: None, 3: None}]
+    histograms_all_cameras = [{0: [[], [], []], 1: [[], [], []], 2: [[], [], []], 3: [[], [], []]},
+                              {0: [[], [], []], 1: [[], [], []], 2: [[], [], []], 3: [[], [], []]},
+                              {0: [[], [], []], 1: [[], [], []], 2: [[], [], []], 3: [[], [], []]},
+                              {0: [[], [], []], 1: [[], [], []], 2: [[], [], []], 3: [[], [], []]}]
 
     for i_camera, cameras in enumerate(person_to_colors):
+        frame_camera = frames[i_camera][cam_to_frame[i_camera]]
         # for each person
         for person in cameras:
             pixels = cameras[person]  # pixels of the corresponding person
@@ -375,23 +415,21 @@ def get_histograms():
 
             waist = np.max([x[1] for x in pixels]) - np.min([x[1] for x in pixels]) // 1.5
 
-            # maybe drop the head
-
             for x, y in pixels:
                 if y < waist:
                     mask[y, x] = 255
-            frame_in_hsv = cv.cvtColor(frames[i_camera][cam_to_frame[i_camera]], cv.COLOR_BGR2HSV)
-            hist = cv.calcHist([frame_in_hsv], [0, 1], mask, [16, 16],
-                               [0, 180, 140, 255])
-            cv.normalize(hist, hist, alpha=0, beta=400, norm_type=cv.NORM_MINMAX)
-            histograms_all_cameras[i_camera][person] = hist
+            for channel_i, channel in enumerate(['b', 'g', 'r']):
+                hist = cv.calcHist([frame_camera], [channel_i], mask, [256], [0, 255])
+                cv.normalize(hist, hist).flatten()
+                histograms_all_cameras[i_camera][person][channel_i] = hist
+
     for person in range(4):
-        hists = []
-        for camera_i in range(4):
-            hists.append(histograms_all_cameras[camera_i][person])
-        combined = np.add(hists[0], np.add(hists[1], np.add(hists[2], hists[3])))
-        combined = cv.normalize(combined, combined, alpha=0, beta=400, norm_type=cv.NORM_MINMAX)
-        histograms[person] = combined
+        for channel_i in range(3):
+            sum = np.add(histograms_all_cameras[0][person][channel_i],
+                         np.add(histograms_all_cameras[1][person][channel_i],
+                                np.add(histograms_all_cameras[2][person][channel_i],
+                                       histograms_all_cameras[3][person][channel_i])))
+            histograms[person][channel_i] = np.array(cv.normalize(sum, sum).flatten(), dtype=np.float32)
 
     return histograms
 
