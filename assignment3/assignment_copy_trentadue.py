@@ -82,6 +82,12 @@ def get_mask(frame, camera_i):
     return result
 
 
+def draw_paths(centroids_list):
+    # centroids_list = [[(x1, y1), (x2, y2), ...], [(x1, y1), (x2, y2), ...], ...]
+
+    base = np.zeros((500, 500, 3), dtype=np.uint8)
+    
+
 def generate_grid(width, depth):
     # Generates the floor grid locations
     # You don't need to edit this function

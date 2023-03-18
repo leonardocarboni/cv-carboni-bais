@@ -142,6 +142,7 @@ def reconstruct_voxels(n_frame):
     return visible_voxels, labels
 
 
+
 def set_voxel_positions(width, height, depth, n_frame):
     global gaussian_mixture_models
     global lookup_table
@@ -177,44 +178,48 @@ def set_voxel_positions(width, height, depth, n_frame):
                 if y < waist:
                     mask[y, x] = 255
             probabilities = []
-            super_pixels = []
+            list_colors = cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist()
+            b = np.array([color[0] for color in list_colors], dtype=np.float32)
+            g = np.array([color[1] for color in list_colors], dtype=np.float32)
+            r = np.array([color[2] for color in list_colors], dtype=np.float32)
+            super_pixel = [np.mean(b), np.mean(g), np.mean(r)]
+
             for i_gmm in range(4):
                 log_likelihood = 0
-
-                list_colors = cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist()
-                b = np.array([color[0] for color in list_colors], dtype=np.float32)
-                g = np.array([color[1] for color in list_colors], dtype=np.float32)
-                r = np.array([color[2] for color in list_colors], dtype=np.float32)
-                super_pixel = [np.mean(b), np.mean(g), np.mean(r)]
-
                 for pixel in list_colors:
                     log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][
                         0]
                 probabilities.append(log_likelihood / len(frames[n_camera][n_frame][mask == 255].tolist()))
-                super_pixels.append(super_pixel)
-            best_person[person] = (np.argmax(probabilities), max(probabilities), super_pixels[np.argmax(probabilities)])
+
+            best_person[person] = (np.argmax(probabilities), max(probabilities), super_pixel)
         best_people.append(best_person)
 
     # best people is a list of dictionaries, each dictionary contains, for each person/label, the best cluster
     # number (of that camera) and the probability of that cluster
 
     # now we have to find the right label for each person
-    mappa = [[0, 1, 2, 3], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]]
-    for i_person in range(4):
-        average_color = best_people[0][i_person][2]
+    mappa = [[-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]]
+    mappa = []
+    for i, best_person in enumerate(best_people):
+        aa = []
+        for j in best_person:
+            aa.append(best_person[j][0])
+        mappa.append(aa)
 
-        for i_camera in range(1, 4):
-            closest_index = 0
-            closest_difference = 1000000000
-            colors = [best_people[i_camera][0][2], best_people[i_camera][1][2], best_people[i_camera][2][2],
-                      best_people[i_camera][3][2]]
-            for i_color in range(4):
-                differences = abs(np.array(average_color) - np.array(colors[i_color]))
-                average_difference = np.mean(differences)
-                if average_difference < closest_difference:
-                    closest_difference = average_difference
-                    closest_index = i_color
-            mappa[i_camera][i_person] = closest_index
+    # for i_person in range(4):
+    #     for i_camera in range(4):
+    #         average_color = best_people[i_camera][i_person][2]
+    #         closest_index = 0
+    #         closest_difference = 1000000000
+    #         colors = [best_people[i_camera][0][2], best_people[i_camera][1][2], best_people[i_camera][2][2],
+    #                   best_people[i_camera][3][2]]
+    #         for i_color in range(4):
+    #             differences = abs(np.array(average_color) - np.array(colors[i_color]))
+    #             average_difference = np.mean(differences)
+    #             if average_difference < closest_difference:
+    #                 closest_difference = average_difference
+    #                 closest_index = i_color
+    #         mappa[i_camera][i_person] = closest_index
     print(mappa)
 
     right_labels = [-1, -1, -1, -1]
@@ -431,7 +436,7 @@ def get_gaussian_mixture_models():
 
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
 
-    best_person = [0, 1, 2, 3, 2, 3, 0, 1, 2, 0, 3, 1, 1, 3, 2, 0]
+    best_person = [[0, 1, 2, 3], [2, 1, 3, 0], [0, 1, 2, 3], [2, 3, 1, 0]]
 
     person_training_data = [[], [], [], []]
     for i_camera, cameras in enumerate(person_to_colors):
@@ -452,7 +457,7 @@ def get_gaussian_mixture_models():
                 mask == 255].tolist()
             # person_pixels = frames[i_camera][cam_to_frame[i_camera]][mask == 255].tolist()
 
-            person_training_data[best_person[i_camera * 4 + person]].append(person_pixels)
+            person_training_data[best_person[i_camera][person]].append(person_pixels)
 
     for i_person in range(4):
         # flatten the data
@@ -545,27 +550,6 @@ def create_lookup_table(width, height, depth):
     np.savez('data/lookup_table', lookup_table=lookup_table)
     return voxel_positions, lookup_table
 
-
-# print(create_lookup_table(1500, 3000, 3000)[1])
-# set_voxel_positions(1500, 3000,3000)
-
-# show_image(mask1[0], "jnas")
-# show_image(mask2[0], "jnas")
-# show_image(mask3[0], "jnas")
-# show_image(mask4[0], "jnas")
-camera_matrixes = []
-dist_coeffs = []
-rvecs_extr = []
-tvecs_extr = []
-
-# for i in range(4):
-#     s = cv.FileStorage(
-#         f"./data/cam{i+1}/config.xml", cv.FileStorage_READ)
-#     camera_matrixes.append(s.getNode('camera_matrix').mat())
-#     dist_coeffs.append(s.getNode('dist_coeffs').mat())
-#     rvecs_extr.append(s.getNode('rvec_extr').mat())
-#     tvecs_extr.append(s.getNode('tvec_extr').mat())
-#     s.release()
 
 start_lookup = time()
 exists = os.path.isfile('./data/lookup_table.npz')
