@@ -1,8 +1,10 @@
 import os
+import random
 from collections import Counter
 from time import time
 
 import glm
+from scipy.optimize import linear_sum_assignment
 from scipy.spatial import distance
 from sklearn.preprocessing import normalize
 
@@ -121,9 +123,12 @@ def reconstruct_voxels(n_frame):
                                   for x in visible_voxels], dtype=np.float32)
     compactness, labels, centers = cv.kmeans(
         voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
+    print("before", len(visible_voxels))
     voxels_to_remove = []
     for label, center in enumerate(centers):
+        print(f"doing label {label}")
         filtered_list = [lst for lst, current_lab in zip(visible_voxels, labels) if current_lab == label]
+        # print("label numero ", label, filtered_list)
         avg_dist_from_center = 0
         for x, z, y in filtered_list:
             avg_dist_from_center += distance.euclidean((x, y), center)
@@ -133,6 +138,7 @@ def reconstruct_voxels(n_frame):
                 voxels_to_remove.append([x, z, y])
     for vox in voxels_to_remove:
         visible_voxels.remove(vox)
+    print("after", len(visible_voxels))
     voxels_to_cluster = np.array([[x[0], x[2]]
                                   for x in visible_voxels], dtype=np.float32)
     compactness, labels, centers = cv.kmeans(
@@ -149,7 +155,12 @@ def set_voxel_positions(width, height, depth, n_frame):
     visible_voxels, labels = reconstruct_voxels(n_frame)
     best_people = []
     images_points = []
+    probabilities_total = []
+
+    frames_x = []
+    all_images_points = []
     for n_camera in range(4):
+        frame_x = []
         image_points = []
 
         for i_label, vox in enumerate(visible_voxels):
@@ -163,12 +174,13 @@ def set_voxel_positions(width, height, depth, n_frame):
             image_points.append(
                 ((x_2d, y_2d), labels[i_label][0]))
         images_points.append(image_points)
+        all_images_points.append(image_points)
 
         person_pixels = {0: [], 1: [], 2: [], 3: []}
         for pixel, label in image_points:
             person_pixels[label].append(pixel)
 
-        best_person = {0: (-1, -1, []), 1: (-1, -1, []), 2: (-1, -1, []), 3: (-1, -1, [])}
+        best_person = {0: (-1, -1), 1: (-1, -1), 2: (-1, -1), 3: (-1, -1)}
         for person in person_pixels:
             mask = np.zeros(frames[n_camera][n_frame].shape[:2], np.uint8)
             pixels = person_pixels[person]
@@ -177,82 +189,127 @@ def set_voxel_positions(width, height, depth, n_frame):
                 if y < waist:
                     mask[y, x] = 255
             probabilities = []
-            super_pixels = []
             for i_gmm in range(4):
                 log_likelihood = 0
-
-                list_colors = cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist()
-                b = np.array([color[0] for color in list_colors], dtype=np.float32)
-                g = np.array([color[1] for color in list_colors], dtype=np.float32)
-                r = np.array([color[2] for color in list_colors], dtype=np.float32)
-                super_pixel = [np.mean(b), np.mean(g), np.mean(r)]
-
-                for pixel in list_colors:
+                for pixel in cv.cvtColor(frames[n_camera][n_frame], cv.COLOR_BGR2HSV)[mask == 255].tolist():
+                    # for pixel in frames[n_camera][n_frame][mask == 255].tolist():
                     log_likelihood += gaussian_mixture_models[i_gmm].predict2(np.array(pixel, dtype=np.float32))[0][
                         0]
                 probabilities.append(log_likelihood / len(frames[n_camera][n_frame][mask == 255].tolist()))
-                super_pixels.append(super_pixel)
-            best_person[person] = (np.argmax(probabilities), max(probabilities), super_pixels[np.argmax(probabilities)])
+
+            best_person[person] = (np.argmax(probabilities), np.max(probabilities))
+        probabilities_total.append([x[1] for x in best_person.values()])
         best_people.append(best_person)
+
+
+    #
+    #     frames_x.append(frame_x)
+    # image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
+    #                                 np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
+    #
+    # show_image(image_to_show, f"frame {n_frame}")
 
     # best people is a list of dictionaries, each dictionary contains, for each person/label, the best cluster
     # number (of that camera) and the probability of that cluster
 
-    # now we have to find the right label for each person
-    mappa = [[0, 1, 2, 3], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]]
-    for i_person in range(4):
-        average_color = best_people[0][i_person][2]
+    # matching the labels with hungarian algorithm
+    print(probabilities_total)
+    print(np.array(probabilities_total).shape)
+    row_ind, col_ind = linear_sum_assignment(probabilities_total)
+    print(row_ind, col_ind)
 
-        for i_camera in range(1, 4):
-            closest_index = 0
-            closest_difference = 1000000000
-            colors = [best_people[i_camera][0][2], best_people[i_camera][1][2], best_people[i_camera][2][2],
-                      best_people[i_camera][3][2]]
-            for i_color in range(4):
-                differences = abs(np.array(average_color) - np.array(colors[i_color]))
-                average_difference = np.mean(differences)
-                if average_difference < closest_difference:
-                    closest_difference = average_difference
-                    closest_index = i_color
-            mappa[i_camera][i_person] = closest_index
-    print(mappa)
+    right_labels = []
+    for i in range(4):
+        right_labels.append(best_people[i][col_ind[i]][0])
 
-    right_labels = [-1, -1, -1, -1]
+    # best people contains a list of dictionaries, each dictionary contains the best label for each person
+    # for camera_i, person_data in enumerate(best_people):
+    #     for ground_truth in person_data:
+    #         probabs = []
+    #         for candidate in range(4):
+    #             probabs.append(probabilities_total[camera_i][candidate])
+    #
+    #     for person, data in person_data.items():
+    #         ubhjasb[camera_i][person] = data[0]
+    #
+
     for i_person in range(4):  # persona assoluta [label vera]
-
-        best_label_and_prob = []
+        labels_of_person_in_cameras = []
         for i_camera in range(4):  # camera
-            best_label_and_prob.append(best_people[i_camera][mappa[i_camera][i_person]])
-        # take the one with the first parameter (the label) that appear the most
-
-        occurrences = Counter(x[0] for x in best_label_and_prob)
-        first_two = occurrences.most_common(2)
-
-        if len(first_two) == 1:
-            right_label = first_two[0][0]
-        elif first_two[0][1] != first_two[1][1]:
-            right_label = first_two[0][0]
-        else:
-            right_label = max(best_label_and_prob, key=lambda x: x[1])[0]
-
-        right_labels[i_person] = right_label
-
-    frames_x = []
-    for i_camera in range(4):
-        frame_x = frames[i_camera][n_frame].copy()
-        for pixel, label in images_points[i_camera]:
-            if label in right_labels:
-                a = np.where(right_labels == label)[0][0]
+            lables_in_camera = [data[0] for data in best_people[i_camera].values()]
+            if i_person in lables_in_camera:
+                index_of_person = lables_in_camera.index(i_person)
+                labels_of_person_in_cameras.append(index_of_person)
             else:
-                a = np.setdiff1d(np.array([0, 1, 2, 3]), np.unique(right_labels))[0]
-            cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
+                labels_of_person_in_cameras.append(-1)
+        # 2, 2, -1, 2
 
-        frames_x.append(frame_x)
-    image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
-                                    np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
+        person_pixels = {0: [], 1: [], 2: [], 3: []}
+        for n_camera, camera_data in enumerate(all_images_points):
+            for pixel, label in camera_data:
+                if label == labels_of_person_in_cameras[n_camera]:
+                    person_pixels[n_camera].append(pixel)
+        frames_x = []
+        for i_camera in range(4):
+            frame_x = frames[i_camera][n_frame].copy()
+            for pixel, label in images_points[i_camera]:
+                if label in right_labels:
+                    a = np.where(right_labels == label)[0][0]
+                else:
+                    print(f"FAIL in {n_frame} with label {label}")
+                    a = random.randint(0, len(right_labels) - 1)
+                cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
 
-    show_image(image_to_show, f"frame {n_frame}")
-    print(right_labels)
+            frames_x.append(frame_x)
+        image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
+                                        np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
+
+        show_image(image_to_show, f"frame {n_frame}")
+    #
+    #     best_label_and_prob = []
+    #
+    #     for i_camera in range(4):  # camera
+    #         best_label_and_prob.append(best_people[i_camera][i_person])
+    #
+    # for i_person in range(4):
+    #     best_label_and_prob = []
+    #     for i_camera in range(4):
+    #         best_label_and_prob.append((col_ind[i_camera], probabilities_total[i_camera][col_ind[i_camera]]))
+    #
+    #     occurrences = Counter(x[0] for x in best_label_and_prob)
+    #     first_two = occurrences.most_common(2)
+    #
+    #     if len(first_two) == 1:
+    #         right_label = first_two[0][0]
+    #     elif first_two[0][1] != first_two[1][1]:
+    #         right_label = first_two[0][0]
+    #     else:
+    #         right_label = max(best_label_and_prob, key=lambda x: x[1])[0]
+    #
+    #     right_labels.append(right_label)
+    #
+    #
+    #
+    #
+    # frames_x = []
+    # for i_camera in range(4):
+    #     frame_x = frames[i_camera][n_frame].copy()
+    #     for pixel, label in images_points[i_camera]:
+    #         if label in right_labels:
+    #             a = np.where(right_labels == label)[0][0]
+    #         else:
+    #             print(f"FAIL in {n_frame} with label {label}")
+    #             a = random.randint(0, len(right_labels) - 1)
+    #         cv.circle(frame_x, pixel, 2, labels_to_color[a], -1)
+    #
+    #     frames_x.append(frame_x)
+    # image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
+    #                                 np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
+    #
+    # show_image(image_to_show, f"frame {n_frame}")
+    #
+    #
+    # print(right_labels)
     colors = []
 
     # coloring using kmeans labels
@@ -260,13 +317,14 @@ def set_voxel_positions(width, height, depth, n_frame):
     #     colors.append(labels_to_color[label[0]])
 
     for i_vox, vox in enumerate(visible_voxels):
+        color = (0, 0, 0)
         if labels[i_vox] in right_labels:
-            color = labels_to_color[np.where(right_labels == labels[i_vox])[0][0]]
-            colors.append((color[2], color[1], color[0]))
+            c = labels_to_color[np.where(right_labels == labels[i_vox])[0][0]]
+            color = (c[2], c[1], c[0])
         else:
-            a = np.setdiff1d(np.array([0, 1, 2, 3]), np.unique(right_labels))[0]
-            color = labels_to_color[a]
-            colors.append((color[2], color[1], color[0]))
+            c = labels_to_color[random.randint(0, len(right_labels) - 1)]
+            color = (c[2], c[1], c[0])
+        colors.append(color)
 
     return visible_voxels, colors
 
@@ -349,11 +407,15 @@ def reconstruct_all_voxels():
         # COLORS
         voxels_to_cluster = np.array([[x[0], x[2]]
                                       for x in visible_voxels], dtype=np.float32)
+        # print("camera ", j_camera, voxels_to_cluster)
         compactness, labels, centers = cv.kmeans(
             voxels_to_cluster, 4, None, criteria, 20, cv.KMEANS_RANDOM_CENTERS)
+        print("before", len(visible_voxels))
         voxels_to_remove = []
         for label, center in enumerate(centers):
+            print(f"doing label {label}")
             filtered_list = [lst for lst, current_lab in zip(visible_voxels, labels) if current_lab == label]
+            # print("label numero ", label, filtered_list)
             avg_dist_from_center = 0
             for x, z, y in filtered_list:
                 avg_dist_from_center += distance.euclidean((x, y), center)
@@ -363,6 +425,7 @@ def reconstruct_all_voxels():
                     voxels_to_remove.append([x, z, y])
         for vox in voxels_to_remove:
             visible_voxels.remove(vox)
+        print("after", len(visible_voxels))
         voxels_to_cluster = np.array([[x[0], x[2]]
                                       for x in visible_voxels], dtype=np.float32)
         compactness, labels, centers = cv.kmeans(
@@ -432,6 +495,14 @@ def get_gaussian_mixture_models():
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
 
     best_person = [0, 1, 2, 3, 2, 3, 0, 1, 2, 0, 3, 1, 1, 3, 2, 0]
+    # {0: (0, []), 1: (1, histograms[0][1]), 2: (2, histograms[0][2]),
+    #  3: (3, histograms[0][3])},
+    # {0: (2, histograms[1][0]), 1: (3, histograms[1][1]), 2: (0, histograms[1][2]),
+    #  3: (1, histograms[1][3])},
+    # {0: (2, histograms[2][0]), 1: (0, histograms[2][1]), 2: (3, histograms[2][2]),
+    #  3: (1, histograms[2][3])},
+    # {0: (1, histograms[3][0]), 1: (3, histograms[3][1]), 2: (2, histograms[3][2]),
+    #  3: (0, histograms[3][3])}]
 
     person_training_data = [[], [], [], []]
     for i_camera, cameras in enumerate(person_to_colors):
@@ -461,53 +532,6 @@ def get_gaussian_mixture_models():
         gaussian_mixture_models[i_person].trainEM(np.array(data, dtype=np.float32))
 
     # AT THIS POINT WE HAVE THE HISTOGRAMS OF EACH PERSON FOR EACH CAMERA
-    # training the gaussian mixture models
-    for i_person in range(4):
-        # flatten the data
-        data = [item for sublist in person_training_data[i_person] for item in sublist]
-        # train the gaussian mixture model
-        gaussian_mixture_models[i_person].trainEM(np.array(data, dtype=np.float32))
-
-    frames_x = []
-
-    for i_camera, all_pixels_in_frame in enumerate(person_to_colors):
-        n_frame = cam_to_frame[i_camera]
-        frame_x = frames[i_camera][n_frame].copy()
-        frame_x_hsv = cv.cvtColor(frames[i_camera][n_frame], cv.COLOR_BGR2HSV)
-        for person in all_pixels_in_frame:
-            pixels_of_person = all_pixels_in_frame[person]
-            likelihoods = [0, 0, 0, 0]
-            probabilities = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
-            puttanadio = [0, 0, 0, 0]
-            for pixel in pixels_of_person:
-                color = frame_x_hsv[pixel[1], pixel[0]]
-                color = [color[0], color[1], color[2]]
-                for gmm_i in range(4):
-                    mia_zia = gaussian_mixture_models[gmm_i].predict2(np.array(color, dtype=np.float32))
-                    likelihoods[gmm_i] += mia_zia[0][0]
-                    ps = np.array(mia_zia[1][0])
-                    max_verstappen = max(ps)
-                    if max_verstappen > puttanadio[gmm_i]:
-                        puttanadio[gmm_i] = max_verstappen
-                    probabilities[gmm_i] += mia_zia[1][0]
-
-            likelihoods = np.array(likelihoods) / len(pixels_of_person)
-            probabilities = np.array(probabilities) / len(pixels_of_person)
-            massimi = np.array([max(probabilities[i]) for i in range(4)])
-            best_label_by_prob = np.argmax(massimi)
-            best_label_by_puttanadio = np.argmax(puttanadio)
-
-            best_label = np.argmax(likelihoods)
-            print(f"prob: {best_label_by_prob}, likelihood: {best_label}, puttanadio: {best_label_by_puttanadio}")
-
-            for pixel in pixels_of_person:
-                cv.circle(frame_x, pixel, 2, labels_to_color[best_label], -1)
-
-        frames_x.append(frame_x)
-    image_to_show = np.concatenate((np.concatenate((frames_x[0], frames_x[1]), axis=1),
-                                    np.concatenate((frames_x[2], frames_x[3]), axis=1)), axis=0)
-
-    show_image(image_to_show, "Training data")
 
     return gaussian_mixture_models
 

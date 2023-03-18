@@ -10,7 +10,7 @@ from assignment_copy import set_voxel_positions, generate_grid, get_cam_position
 from engine.camera import Camera
 from engine.config import config
 
-n_frame = 0
+n_frame = 4
 cube, hdrbuffer, blurbuffer, lastPosX, lastPosY = None, None, None, None, None
 firstTime = True
 window_width, window_height = config['window_width'], config['window_height']
