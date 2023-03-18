@@ -178,24 +178,25 @@ def set_voxel_positions(width, height, depth, n_frame):
     # number (of that camera) and the probability of that cluster
 
     # get only the unique values of the best person
-    unique_best_person = np.unique([x[0] for x in best_person])
-    if len(unique_best_person) < 4:
-        count = [0, 0, 0, 0]
-        missing_person = [x for x in range(4) if x not in unique_best_person][0]
-        for person, _ in best_person:
-            if person in unique_best_person:
-                count[person] += 1
-        for person in range(4):
-            if count[person] > 1:
-                probs_of_person = []
-                for x in best_person:
-                    if x[0] == person:
-                        probs_of_person.append(x[1])
-                    else:
-                        probs_of_person.append(-3000)
+    for i in range(2):
+        unique_best_person = np.unique([x[0] for x in best_person])
+        if len(unique_best_person) < 4:
+            count = [0, 0, 0, 0]
+            missing_person = [x for x in range(4) if x not in unique_best_person][0]
+            for person, _ in best_person:
+                if person in unique_best_person:
+                    count[person] += 1
+            for person in range(4):
+                if count[person] > 1:
+                    probs_of_person = []
+                    for x in best_person:
+                        if x[0] == person:
+                            probs_of_person.append(x[1])
+                        else:
+                            probs_of_person.append(1)
 
-                index_of_missing_person = np.argmax(probs_of_person)
-                best_person[index_of_missing_person] = (missing_person, max(probs_of_person))
+                    index_of_missing_person = np.argmin(probs_of_person)
+                    best_person[index_of_missing_person] = (missing_person, min(probs_of_person))
 
     frames_x = []
     for i_camera in range(4):
@@ -383,7 +384,7 @@ def get_gaussian_mixture_models():
 
     # AT THIS POINT WE HAVE THE 2D PIXELS OF EACH PERSON FOR EACH CAMERA
 
-    best_person = [[0, 1, 2, 3], [0, 3, 0, 1], [2, 0, 3, 1], [1, 3, 2, 0]]
+    best_person = [[0, 1, 2, 3], [2, 1, 3, 0], [2, 0, 3, 1], [2, 3, 1, 0]]
     print()
     person_training_data = [[], [], [], []]
     for i_camera, cameras in enumerate(person_to_colors):
