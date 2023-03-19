@@ -367,7 +367,7 @@ def get_gaussian_mixture_models():
                 ((x_2d, y_2d), all_labels[i_camera][i_label][0], frames[i_camera][chosen_frame][y_2d, x_2d]))
             cv.circle(frame_copy, (x_2d, y_2d), 5, labels_to_color[all_labels[i_camera][i_label][0]], -1)
         pixels_colors.append(image_points)
-        show_image(frame_copy, "offline labels")
+        # show_image(frame_copy, "offline labels")
 
     # AT THIS POINT WE HAVE THE 2D PIXELS, THEIR CLUSTERING LABELS AND THEIR ORIGINAL COLORS
 
@@ -498,17 +498,37 @@ for f in range(0, 270):
     except:
         print("fail at frame", f)
 
-paths = np.zeros((500, 500, 3), dtype=np.uint8)
+np.savez('centers_list', centers_list=centers_list)
 
+paths = np.zeros((500, 500, 3), dtype=np.uint8)
+paths2 = np.zeros((500, 500, 3), dtype=np.uint8)
+paths3 = np.zeros((500, 500, 3), dtype=np.uint8)
+paths4 = np.zeros((500, 500, 3), dtype=np.uint8)
+old_c = []
 for c_in_frame in centers_list:
+    old_c = c_in_frame
     for label, c in enumerate(c_in_frame):
         # normalize the coordinates to be in a 500 x 500 image
-        x = (c[0] + 64) / 128 * 500
-        y = (c[1] + 64) / 128 * 500
+        x = (c[0]) / 128 * 1000
+        y = (c[1]) / 128 * 1000
+        # normalize the coordinates to be in a 500 x 500 image
+
+        old_x = (old_c[label][0] + 64) / 128 * 1000
+        old_y = (old_c[label][1] + 64) / 128 * 1000
 
         cv.circle(paths, (int(x), int(y)), 3, labels_to_color[label], -1)
 
-cv.imshow("paths", paths)
-cv.waitKey(0)
-cv.destroyAllWindows()
-cv.imwrite("paths.png", paths)
+        if len(old_c) > 0:
+            # calculate the distance between the current and the previous position
+            dist = np.linalg.norm(np.array(c) - np.array(old_c[label]))
+            if dist < 10:
+                cv.line(paths2, (int(x), int(y)), (int(old_x), int(old_y)), labels_to_color[label], 2)
+            if dist < 20:
+                cv.line(paths3, (int(x), int(y)), (int(old_x), int(old_y)), labels_to_color[label], 2)
+            if dist < 8:
+                cv.line(paths4, (int(x), int(y)), (int(old_x), int(old_y)), labels_to_color[label], 2)
+
+cv.imwrite("paths_v2.png", paths)
+cv.imwrite("paths_v3_10.png", paths2)
+cv.imwrite("paths_v3_20.png", paths3)
+cv.imwrite("paths_v3_8.png", paths4)
