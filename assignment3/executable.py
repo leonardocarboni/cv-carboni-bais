@@ -10,7 +10,7 @@ from assignment_onecamera import set_voxel_positions, generate_grid, get_cam_pos
 from engine.camera import Camera
 from engine.config import config
 
-n_frame = 4
+n_frame = -1
 cube, hdrbuffer, blurbuffer, lastPosX, lastPosY = None, None, None, None, None
 firstTime = True
 window_width, window_height = config['window_width'], config['window_height']
@@ -137,9 +137,12 @@ def main():
 
     last_time = glfw.get_time()
     while not glfw.window_should_close(window):
+        global n_frame
+
         if config['debug_mode']:
             print(glGetError())
-
+        
+        
         current_time = glfw.get_time()
         delta_time = current_time - last_time
         last_time = current_time
@@ -172,7 +175,11 @@ def main():
         hdrbuffer.finalize()
 
         bloom.draw_processed_scene()
-
+        if n_frame >= 0 and n_frame <= 270:
+            positions, colors = set_voxel_positions(
+                config['world_width'], config['world_height'], config['world_width'], n_frame)
+            n_frame+=1
+            cube.set_multiple_positions(positions, colors)
         glfw.poll_events()
         glfw.swap_buffers(window)
 
@@ -198,10 +205,8 @@ def key_callback(window, key, scancode, action, mods):
     if key == glfw.KEY_G and action == glfw.PRESS:
         global cube
         global n_frame
-        positions, colors = set_voxel_positions(
-            config['world_width'], config['world_height'], config['world_width'], n_frame)
-        n_frame+=1
-        cube.set_multiple_positions(positions, colors)
+        n_frame += 1
+        print("Non premere G mai più o ti spacco.")
 
 
 def mouse_move(win, pos_x, pos_y):
