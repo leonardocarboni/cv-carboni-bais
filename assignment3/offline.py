@@ -1,50 +1,47 @@
 from utils import *
 
-backgrounds = []
 
+# turn this on if you want to visualize detected corners, axes on chessboard and the background models
 show = False
 
 # edges from camera 4, found manually and saved
 edges_cam4 = [(252, 363), (313, 327), (310, 388), (368, 343)]
 
+# 4 background models
+backgrounds = []
+
+# performing background subtraction and mask extraction for each camera
 for camera_i in range(4):
     image_points = []
     object_points = []
     print(f"doing camera {camera_i + 1}")
-    # calibration
+    # getting image and object points for calibration
     cap = cv.VideoCapture(cameras_videos_info[camera_i][1])
     w, h = int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(
         cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-
-    exampleFrame = []
-
     for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2):
         retF, img = cap.read()
-        if i == 0:
-            exampleFrame = img.copy()
-
         corners = []
-
         # use interpolation given edges for cam4
         if camera_i == 3:
             corners = interpolate_corners(img, edges_cam4)
         else:
             retC, corners = cv.findChessboardCorners(img, CHESSBOARD_VERTICES)
-
         # swap order of rows for cam3
         if camera_i == 2:
             corners = corners[::-1]
         image_points.append(corners)
         object_points.append(op)
-
+        # Visualize detected corners
         if show:
             chessboard_copy = img.copy()
             cv.drawChessboardCorners(
                 chessboard_copy, CHESSBOARD_VERTICES, corners, retC)
-            show_image(chessboard_copy, f"Cam{camera_i + 1} Chessboard Vertices")
+            show_image(chessboard_copy,
+                       f"Cam{camera_i + 1} Chessboard Vertices")
         break
 
-    # load intrinsics from assignment 2
+    # loading intrinsics from Assignment 2
     s = cv.FileStorage(
         f"./../assignment2/data/cam{camera_i + 1}/config.xml", cv.FileStorage_READ)
     camera_matrix = s.getNode('camera_matrix').mat()
@@ -79,7 +76,7 @@ for camera_i in range(4):
     s.write('R_MAT', R)
     s.release()
 
-    # read bacground video
+    # read background video
     cap = cv.VideoCapture(cameras_videos_info[camera_i][0])
     w, h = int(cap.get(cv.CAP_PROP_FRAME_WIDTH)), int(
         cap.get(cv.CAP_PROP_FRAME_HEIGHT))
@@ -87,48 +84,54 @@ for camera_i in range(4):
     imgs_list_background = [cap.read()[1] for i in range(n_frames_background)]
     cap.release()
 
-    # get average of baground
+    # get average of background
     background = average_images(imgs_list_background)
     backgrounds.append(background)
 
+    # visualizing background model
     if show:
         show_image(background, f"Cam{camera_i + 1} Background")
 
     # masks extraction
     cap = cv.VideoCapture(cameras_videos_info[camera_i][-1])
     all_masks = []
-    for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2):  # 2724
+    for i in range(int(cap.get(cv.CAP_PROP_FRAME_COUNT)) - 2):
         retF, frame = cap.read()
+        # only read 1 every 10 frames (5 FPS)
         if retF and i % 10 == 0:
             w, h, _ = frame.shape
             frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
             background_pixels_hsv = cv.cvtColor(background, cv.COLOR_BGR2HSV)
             foreground_hsv = cv.absdiff(frame_hsv, background_pixels_hsv)
-
+            # load best hsv thresholds from assignment 2
             hue, saturation, value = best_masks[str(camera_i + 1)]
             best_mask = np.zeros((w, h), dtype=np.uint8)
+            # filtering out the background
             for x in range(foreground_hsv.shape[0]):
                 for y in range(foreground_hsv.shape[1]):
                     if foreground_hsv[x, y, 0] > hue and foreground_hsv[x, y, 1] > saturation and foreground_hsv[
-                        x, y, 2] > value:
+                            x, y, 2] > value:
                         best_mask[x, y] = 255
 
+            # morpholgical transformations to imporve quality of the mask
             best_mask = cv.morphologyEx(
                 best_mask, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (7, 7)))
             best_mask = cv.morphologyEx(
                 best_mask, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3)))
 
+            # detect contours
             contours, _ = cv.findContours(
                 best_mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
-            # Sort the remaining contours by size (largest first)
+            # sort the remaining contours by size (largest first)
             contours = sorted(contours, key=cv.contourArea, reverse=True)[:4]
 
             result = np.zeros_like(best_mask)
             cv.fillPoly(result, contours, color=255)
+
+            # store the mask for this frame and this camera
             all_masks.append(result)
 
+    # save all masks for the 3D reconstructions
     np.savez(f"data/cam{camera_i + 1}/masks", masks=all_masks)
-
     cap.release()
-    # np.savez(f"data/cam{camera_i+1}/masks", masks=all_masks)
