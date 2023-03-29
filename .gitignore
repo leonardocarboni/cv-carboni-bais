@@ -15,6 +15,12 @@
 /assignment4/archive/*
 .idea/*
 
+/assignment5/Stanford40/*
+
+/assignment5/test_train_splits/*
+
+/assignment5/video_data/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
